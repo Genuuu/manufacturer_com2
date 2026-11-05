@@ -1,0 +1,82 @@
+{
+  "manufacturers": [],
+  "communications": [],
+  "users": [
+    {
+      "id": "usr-admin",
+      "name": "Admin User",
+      "email": "admin@company.com",
+      "role": "admin",
+      "department": "Procurement & Management",
+      "avatar": "AU",
+      "isActive": true,
+      "lastLogin": "Just now"
+    }
+  ],
+  "rolePermissions": {
+    "admin": {
+      "canCreateManufacturer": true,
+      "canEditManufacturer": true,
+      "canDeleteManufacturer": true,
+      "canLogCommunication": true,
+      "canEditCommunication": true,
+      "canDeleteCommunication": true,
+      "canManageUsers": true,
+      "canModifyPermissions": true,
+      "canExportData": true,
+      "canImportData": true,
+      "canViewAuditLog": true
+    },
+    "manager": {
+      "canCreateManufacturer": true,
+      "canEditManufacturer": true,
+      "canDeleteManufacturer": false,
+      "canLogCommunication": true,
+      "canEditCommunication": true,
+      "canDeleteCommunication": true,
+      "canManageUsers": false,
+      "canModifyPermissions": false,
+      "canExportData": true,
+      "canImportData": true,
+      "canViewAuditLog": true
+    },
+    "engineer": {
+      "canCreateManufacturer": false,
+      "canEditManufacturer": false,
+      "canDeleteManufacturer": false,
+      "canLogCommunication": true,
+      "canEditCommunication": true,
+      "canDeleteCommunication": false,
+      "canManageUsers": false,
+      "canModifyPermissions": false,
+      "canExportData": true,
+      "canImportData": false,
+      "canViewAuditLog": false
+    },
+    "auditor": {
+      "canCreateManufacturer": false,
+      "canEditManufacturer": false,
+      "canDeleteManufacturer": false,
+      "canLogCommunication": false,
+      "canEditCommunication": false,
+      "canDeleteCommunication": false,
+      "canManageUsers": false,
+      "canModifyPermissions": false,
+      "canExportData": true,
+      "canImportData": false,
+      "canViewAuditLog": true
+    }
+  },
+  "auditLogs": [
+    {
+      "id": "log-1793875047699-u5z5",
+      "timestamp": "2026-11-05T10:37:27.699Z",
+      "userId": "usr-admin",
+      "userName": "Admin User",
+      "action": "LOGIN_TEAM",
+      "category": "PERMISSION",
+      "details": "Team member Admin User logged in",
+      "targetId": "usr-admin"
+    }
+  ]
+}

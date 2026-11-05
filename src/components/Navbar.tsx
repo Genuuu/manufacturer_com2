@@ -12,6 +12,7 @@ import {
   Wand2,
   Sparkles,
   BarChart3,
+  LogOut,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -34,6 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     hasPermission,
     manufacturers,
     communications,
+    logout,
   } = useApp();
 
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -139,6 +141,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                           {u.id === currentUser.id && <UserCheck className="h-3.5 w-3.5 text-indigo-600" />}
                         </button>
                       ))}
+                    </div>
+
+                    <div className="mt-2 pt-2 border-t border-slate-100">
+                      <button
+                        onClick={() => {
+                          setUserDropdownOpen(false);
+                          logout();
+                        }}
+                        className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <LogOut className="h-3.5 w-3.5 text-red-500" />
+                        <span>Sign Out</span>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -289,6 +304,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                         </button>
                       );
                     })}
+                  </div>
+
+                  <div className="mt-2 pt-2 border-t border-slate-100">
+                    <button
+                      onClick={() => {
+                        setUserDropdownOpen(false);
+                        logout();
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <LogOut className="h-3.5 w-3.5 text-red-500" />
+                      <span>Sign Out</span>
+                    </button>
                   </div>
                 </div>
               )}

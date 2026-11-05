@@ -5,13 +5,18 @@ import { OverviewView } from './components/OverviewView';
 import { CommunicationView } from './components/CommunicationView';
 import { ManufacturerView } from './components/ManufacturerView';
 import { AccessView } from './components/AccessView';
+import { LoginView } from './components/LoginView';
 import { CommunicationModal } from './components/CommunicationModal';
 import { ManufacturerModal } from './components/ManufacturerModal';
 import { DocumentPreviewModal } from './components/DocumentPreviewModal';
 import { CommunicationEntry, Manufacturer } from './types';
 
 const MainLayout: React.FC = () => {
-  const { activeTab } = useApp();
+  const { activeTab, isAuthenticated } = useApp();
+
+  if (!isAuthenticated) {
+    return <LoginView />;
+  }
 
   // Modal States
   const [commModalOpen, setCommModalOpen] = useState(false);

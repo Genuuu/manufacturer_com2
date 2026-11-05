@@ -1,4 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import {
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDocs,
+  writeBatch
+} from 'firebase/firestore';
 import {
   Manufacturer,
   CommunicationEntry,
@@ -15,6 +26,7 @@ import {
   DEFAULT_ROLE_PERMISSIONS,
   INITIAL_AUDIT_LOGS,
 } from '../data/initialData';
+import { testFirestoreConnection, auth, googleProvider, db, handleFirestoreError, OperationType } from '../firebase';
 
 export type NavTab = 
   | 'overview'
@@ -33,12 +45,19 @@ interface AppContextType {
   selectedManufacturerId: string;
   selectedThreadId: string | null;
   searchQuery: string;
+  firebaseConnected: boolean;
+  firebaseProjectId: string;
+  isAuthenticated: boolean;
   
   setActiveTab: (tab: NavTab) => void;
   setSelectedManufacturerId: (id: string) => void;
   setSelectedThreadId: (id: string | null) => void;
   setSearchQuery: (query: string) => void;
   switchUser: (userId: string) => void;
+  
+  loginWithUser: (user: AppUser) => void;
+  loginWithGoogle: () => Promise<{ success: boolean; message: string }>;
+  logout: () => Promise<void>;
   
   hasPermission: (permission: keyof RolePermissions) => boolean;
   
@@ -60,11 +79,13 @@ interface AppContextType {
   createUser: (userData: Omit<AppUser, 'id' | 'lastLogin'>) => { success: boolean; message: string };
   updateUser: (userId: string, data: Partial<AppUser>) => { success: boolean; message: string };
   toggleUserStatus: (userId: string) => { success: boolean; message: string };
+  deleteUser: (userId: string) => { success: boolean; message: string };
   
   // Data Tools
   exportCsvData: () => string;
   importCsvData: (csvContent: string) => { success: boolean; count: { manufacturers: number; communications: number }; error?: string };
   resetDatabase: () => void;
+  clearAllData: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -76,10 +97,20 @@ const STORAGE_KEYS = {
   CURRENT_USER: 'fabricateops_current_user_v1',
   PERMISSIONS: 'fabricateops_permissions_v1',
   AUDIT: 'fabricateops_audit_logs_v1',
+  IS_AUTH: 'fabricateops_is_auth_v1',
 };
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Load stored or fallback data
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.IS_AUTH);
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.MANUFACTURERS);
@@ -143,55 +174,132 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [selectedManufacturerId, setSelectedManufacturerId] = useState<string>('M001');
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  // Firebase state
+  const [firebaseConnected, setFirebaseConnected] = useState<boolean>(true);
+  const [firebaseProjectId, setFirebaseProjectId] = useState<string>('manufacturer-11fe2');
 
-  // Sync to localStorage
+  useEffect(() => {
+    testFirestoreConnection().then(res => {
+      setFirebaseConnected(res.connected);
+      if (res.projectId) setFirebaseProjectId(res.projectId);
+    });
+
+    const unsubscribeAuth = onAuthStateChanged(auth, firebaseUser => {
+      if (firebaseUser) {
+        setIsAuthenticated(true);
+        localStorage.setItem(STORAGE_KEYS.IS_AUTH, 'true');
+      }
+    });
+
+    // Real-time Firestore Listeners with safe error logging
+    const unsubManufacturers = onSnapshot(collection(db, 'manufacturers'), snapshot => {
+      if (!snapshot.empty) {
+        const list: Manufacturer[] = [];
+        snapshot.forEach(docSnap => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as Manufacturer);
+        });
+        setManufacturers(list);
+      }
+    }, err => console.warn('Firestore manufacturers sync notice:', err.message));
+
+    const unsubCommunications = onSnapshot(collection(db, 'communications'), snapshot => {
+      if (!snapshot.empty) {
+        const list: CommunicationEntry[] = [];
+        snapshot.forEach(docSnap => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as CommunicationEntry);
+        });
+        setCommunications(list);
+      }
+    }, err => console.warn('Firestore communications sync notice:', err.message));
+
+    const unsubUsers = onSnapshot(collection(db, 'users'), snapshot => {
+      if (!snapshot.empty) {
+        const list: AppUser[] = [];
+        snapshot.forEach(docSnap => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as AppUser);
+        });
+        setUsers(list);
+      }
+    }, err => console.warn('Firestore users sync notice:', err.message));
+
+    const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snapshot => {
+      if (!snapshot.empty) {
+        const list: AuditLogItem[] = [];
+        snapshot.forEach(docSnap => {
+          list.push({ id: docSnap.id, ...docSnap.data() } as AuditLogItem);
+        });
+        setAuditLogs(list);
+      }
+    }, err => console.warn('Firestore auditLogs sync notice:', err.message));
+
+    const unsubPermissions = onSnapshot(doc(db, 'settings', 'permissions'), docSnap => {
+      if (docSnap.exists()) {
+        setRolePermissions(docSnap.data() as Record<UserRoleType, RolePermissions>);
+      }
+    }, err => console.warn('Firestore permissions sync notice:', err.message));
+
+    return () => {
+      unsubscribeAuth();
+      unsubManufacturers();
+      unsubCommunications();
+      unsubUsers();
+      unsubAudit();
+      unsubPermissions();
+    };
+  }, []);
+
+  // Sync state to local server disk database (data/db.json) and localStorage
+  const [isDbLoaded, setIsDbLoaded] = useState(false);
+
+  // Load from local database file on mount
+  useEffect(() => {
+    fetch('/api/db')
+      .then(res => res.json())
+      .then(result => {
+        if (result && result.success && result.data) {
+          const { manufacturers: mData, communications: cData, users: uData, rolePermissions: pData, auditLogs: aData } = result.data;
+          if (mData && Array.isArray(mData)) setManufacturers(mData);
+          if (cData && Array.isArray(cData)) setCommunications(cData);
+          if (uData && Array.isArray(uData)) setUsers(uData);
+          if (pData) setRolePermissions(pData);
+          if (aData && Array.isArray(aData)) setAuditLogs(aData);
+        }
+        setIsDbLoaded(true);
+      })
+      .catch(err => {
+        console.warn('Failed to fetch local file db:', err);
+        setIsDbLoaded(true);
+      });
+  }, []);
+
+  // Save changes to local disk database file (data/db.json) & localStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.MANUFACTURERS, JSON.stringify(manufacturers));
-    } catch (e) {
-      console.warn('LocalStorage error', e);
-    }
-  }, [manufacturers]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(STORAGE_KEYS.COMMUNICATIONS, JSON.stringify(communications));
-    } catch (e) {
-      console.warn('LocalStorage error', e);
-    }
-  }, [communications]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-    } catch (e) {
-      console.warn('LocalStorage error', e);
-    }
-  }, [users]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
-    } catch (e) {
-      console.warn('LocalStorage error', e);
-    }
-  }, [currentUser]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(STORAGE_KEYS.PERMISSIONS, JSON.stringify(rolePermissions));
-    } catch (e) {
-      console.warn('LocalStorage error', e);
-    }
-  }, [rolePermissions]);
-
-  useEffect(() => {
-    try {
       localStorage.setItem(STORAGE_KEYS.AUDIT, JSON.stringify(auditLogs));
+
+      if (isDbLoaded) {
+        fetch('/api/db', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            manufacturers,
+            communications,
+            users,
+            rolePermissions,
+            auditLogs,
+          }),
+        }).catch(err => console.warn('Failed to save to local file db:', err));
+      }
     } catch (e) {
-      console.warn('LocalStorage error', e);
+      console.warn('Persistence error', e);
     }
-  }, [auditLogs]);
+  }, [manufacturers, communications, users, currentUser, rolePermissions, auditLogs, isDbLoaded]);
 
   // Log an audit trail entry
   const addAuditLog = (
@@ -211,6 +319,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       targetId,
     };
     setAuditLogs(prev => [newLog, ...prev]);
+    setDoc(doc(db, 'auditLogs', newLog.id), newLog).catch(err => {
+      console.warn('Firestore audit write failure:', err);
+    });
   };
 
   // Permission Check
@@ -227,6 +338,82 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCurrentUser(target);
       addAuditLog('SESSION_SWITCH', 'PERMISSION', `Switched active user to ${target.name} (${target.role})`, target.id);
     }
+  };
+
+  const loginWithUser = (user: AppUser) => {
+    const updated = {
+      ...user,
+      lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16),
+    };
+    setCurrentUser(updated);
+    setIsAuthenticated(true);
+    localStorage.setItem(STORAGE_KEYS.IS_AUTH, 'true');
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(updated));
+    addAuditLog('LOGIN_TEAM', 'PERMISSION', `Team member ${user.name} logged in`, user.id);
+  };
+
+  const loginWithGoogle = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const googleUser = result.user;
+
+      let matched: AppUser | undefined = users.find(u => u.email.toLowerCase() === (googleUser.email || '').toLowerCase());
+      if (!matched) {
+        const initials = (googleUser.displayName || 'G U')
+          .split(' ')
+          .map(p => p[0])
+          .join('')
+          .toUpperCase()
+          .substring(0, 2);
+
+        matched = {
+          id: `usr-g-${googleUser.uid.substring(0, 8)}`,
+          name: googleUser.displayName || 'Google User',
+          email: googleUser.email || 'google.user@company.com',
+          role: 'admin',
+          department: 'Procurement Management',
+          isActive: true,
+          avatar: initials || 'GU',
+          lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        };
+
+        setUsers(prev => [...prev, matched!]);
+      } else {
+        matched = {
+          ...matched,
+          lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        };
+      }
+
+      const activeUser: AppUser = matched;
+      setCurrentUser(activeUser);
+      setIsAuthenticated(true);
+      localStorage.setItem(STORAGE_KEYS.IS_AUTH, 'true');
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(activeUser));
+      addAuditLog('LOGIN_GOOGLE', 'PERMISSION', `Google user ${googleUser.email} authenticated`, activeUser.id);
+
+      return { success: true, message: 'Google Sign-In successful' };
+    } catch (err: any) {
+      console.warn('Google Sign-In Error:', err);
+      if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
+        return {
+          success: false,
+          message: 'The current domain is not added to Firebase Authorized Domains. Please use Team Account Sign-In below or add this preview domain in Firebase Console > Authentication > Settings > Authorized Domains.'
+        };
+      }
+      return { success: false, message: err.message || 'Google Authentication failed' };
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.warn('SignOut warning:', e);
+    }
+    setIsAuthenticated(false);
+    localStorage.removeItem(STORAGE_KEYS.IS_AUTH);
+    addAuditLog('LOGOUT', 'PERMISSION', `User ${currentUser.name} signed out`);
   };
 
   const getNextManufacturerId = (): string => {
@@ -288,6 +475,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     setManufacturers(prev => [...prev, newM]);
+    setDoc(doc(db, 'manufacturers', newM.id), newM).catch(err => {
+      handleFirestoreError(err, OperationType.WRITE, `manufacturers/${newM.id}`);
+    });
+
     addAuditLog('CREATE_MANUFACTURER', 'MANUFACTURER', `Created supplier ${newM.name} (${newM.id})`, newM.id);
     return { success: true, message: `Supplier ${newM.name} added successfully as ${newM.id}`, id: newM.id };
   };
@@ -302,11 +493,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       prev.map(m => {
         if (m.id === id) {
           updatedName = data.name || m.name;
-          return {
+          const updated = {
             ...m,
             ...data,
             updatedAt: new Date().toISOString(),
           };
+          setDoc(doc(db, 'manufacturers', id), updated, { merge: true }).catch(err => {
+            handleFirestoreError(err, OperationType.UPDATE, `manufacturers/${id}`);
+          });
+          return updated;
         }
         return m;
       })
@@ -325,7 +520,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     setManufacturers(prev =>
-      prev.map(m => (m.id === id ? { ...m, status, updatedAt: new Date().toISOString() } : m))
+      prev.map(m => {
+        if (m.id === id) {
+          const updated = { ...m, status, updatedAt: new Date().toISOString() };
+          setDoc(doc(db, 'manufacturers', id), updated, { merge: true }).catch(err => {
+            handleFirestoreError(err, OperationType.UPDATE, `manufacturers/${id}`);
+          });
+          return updated;
+        }
+        return m;
+      })
     );
 
     addAuditLog('STATUS_CHANGE_MANUFACTURER', 'MANUFACTURER', `Changed status of ${id} to ${status}`, id);
@@ -359,6 +563,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     setCommunications(prev => [newComm, ...prev]);
+    setDoc(doc(db, 'communications', newComm.id), newComm).catch(err => {
+      handleFirestoreError(err, OperationType.WRITE, `communications/${newComm.id}`);
+    });
+
     addAuditLog(
       'LOG_COMMUNICATION',
       'COMMUNICATION',
@@ -375,7 +583,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     setCommunications(prev =>
-      prev.map(c => (c.id === id ? { ...c, ...data } : c))
+      prev.map(c => {
+        if (c.id === id) {
+          const updated = { ...c, ...data };
+          setDoc(doc(db, 'communications', id), updated, { merge: true }).catch(err => {
+            handleFirestoreError(err, OperationType.UPDATE, `communications/${id}`);
+          });
+          return updated;
+        }
+        return c;
+      })
     );
 
     addAuditLog('UPDATE_COMMUNICATION', 'COMMUNICATION', `Updated communication record ${id}`, id);
@@ -389,6 +606,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const target = communications.find(c => c.id === id);
     setCommunications(prev => prev.filter(c => c.id !== id));
+    deleteDoc(doc(db, 'communications', id)).catch(err => {
+      handleFirestoreError(err, OperationType.DELETE, `communications/${id}`);
+    });
+
     addAuditLog(
       'DELETE_COMMUNICATION',
       'COMMUNICATION',
@@ -405,10 +626,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'Permission Denied: Only Admins can modify security permissions.' };
     }
 
-    setRolePermissions(prev => ({
-      ...prev,
+    const updatedPermissions = {
+      ...rolePermissions,
       [role]: permissions,
-    }));
+    };
+    setRolePermissions(updatedPermissions);
+    setDoc(doc(db, 'settings', 'permissions'), updatedPermissions).catch(err => {
+      handleFirestoreError(err, OperationType.WRITE, 'settings/permissions');
+    });
 
     addAuditLog('MODIFY_PERMISSIONS', 'PERMISSION', `Updated security policies for role: ${role.toUpperCase()}`);
     return { success: true, message: `Security permissions for ${role} updated` };
@@ -434,6 +659,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     setUsers(prev => [...prev, newUser]);
+    setDoc(doc(db, 'users', newUser.id), newUser).catch(err => {
+      handleFirestoreError(err, OperationType.WRITE, `users/${newUser.id}`);
+    });
+
     addAuditLog('CREATE_USER', 'PERMISSION', `Added new team member ${newUser.name} as ${newUser.role}`);
     return { success: true, message: `User ${newUser.name} created successfully` };
   };
@@ -443,7 +672,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'Permission Denied: Only Admins can edit users.' };
     }
 
-    setUsers(prev => prev.map(u => (u.id === userId ? { ...u, ...data } : u)));
+    setUsers(prev =>
+      prev.map(u => {
+        if (u.id === userId) {
+          const updated = { ...u, ...data };
+          setDoc(doc(db, 'users', userId), updated, { merge: true }).catch(err => {
+            handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+          });
+          return updated;
+        }
+        return u;
+      })
+    );
     if (currentUser.id === userId) {
       setCurrentUser(prev => ({ ...prev, ...data }));
     }
@@ -461,10 +701,48 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     setUsers(prev =>
-      prev.map(u => (u.id === userId ? { ...u, isActive: !u.isActive } : u))
+      prev.map(u => {
+        if (u.id === userId) {
+          const updated = { ...u, isActive: !u.isActive };
+          setDoc(doc(db, 'users', userId), updated, { merge: true }).catch(err => {
+            handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+          });
+          return updated;
+        }
+        return u;
+      })
     );
     addAuditLog('TOGGLE_USER_STATUS', 'PERMISSION', `Toggled account activation state for ${userId}`);
     return { success: true, message: 'User status updated' };
+  };
+
+  const deleteUser = (userId: string) => {
+    if (!hasPermission('canManageUsers')) {
+      return { success: false, message: 'Permission Denied: Only Admins can delete users.' };
+    }
+    if (userId === currentUser.id) {
+      return { success: false, message: 'Action Prevented: Cannot delete your active Admin session.' };
+    }
+
+    const target = users.find(u => u.id === userId);
+    setUsers(prev => prev.filter(u => u.id !== userId));
+    deleteDoc(doc(db, 'users', userId)).catch(err => {
+      handleFirestoreError(err, OperationType.DELETE, `users/${userId}`);
+    });
+
+    addAuditLog('DELETE_USER', 'PERMISSION', `Deleted user account for ${target?.name || userId}`);
+    return { success: true, message: `User ${target?.name || userId} deleted` };
+  };
+
+  const clearAllData = () => {
+    if (!hasPermission('canModifyPermissions')) {
+      alert('Permission Denied: Only Lead Administrators can clear database records.');
+      return;
+    }
+    setManufacturers([]);
+    setCommunications([]);
+    setAuditLogs([]);
+    addAuditLog('CLEAR_DATABASE', 'DATA', 'Cleared all manufacturers and communications records from database');
   };
 
   // CSV Export & Import matching spreadsheet structure
@@ -656,11 +934,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         selectedManufacturerId,
         selectedThreadId,
         searchQuery,
+        firebaseConnected,
+        firebaseProjectId,
+        isAuthenticated,
         setActiveTab,
         setSelectedManufacturerId,
         setSelectedThreadId,
         setSearchQuery,
         switchUser,
+        loginWithUser,
+        loginWithGoogle,
+        logout,
         hasPermission,
         addManufacturer,
         updateManufacturer,
@@ -675,9 +959,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         createUser,
         updateUser,
         toggleUserStatus,
+        deleteUser,
         exportCsvData,
         importCsvData,
         resetDatabase,
+        clearAllData,
       }}
     >
       {children}

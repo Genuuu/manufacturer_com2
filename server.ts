@@ -4,25 +4,66 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 
+import fs from 'fs';
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const DATA_DIR = path.resolve(__dirname, 'data');
+const DB_FILE = path.resolve(DATA_DIR, 'db.json');
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
 const PORT = process.env.PORT || 3000;
 
-// Initialize Gemini SDK with User-Agent header for telemetry
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
+// Local file database persistence endpoints
+app.get('/api/db', (req, res) => {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const raw = fs.readFileSync(DB_FILE, 'utf-8');
+      return res.json({ success: true, data: JSON.parse(raw) });
+    }
+    return res.json({ success: true, data: null });
+  } catch (err: any) {
+    console.error('Error reading local db file:', err);
+    return res.status(500).json({ error: 'Failed to read local database file.' });
+  }
 });
+
+app.post('/api/db', (req, res) => {
+  try {
+    const payload = req.body;
+    fs.writeFileSync(DB_FILE, JSON.stringify(payload, null, 2), 'utf-8');
+    return res.json({ success: true, message: 'Local database saved successfully' });
+  } catch (err: any) {
+    console.error('Error writing local db file:', err);
+    return res.status(500).json({ error: 'Failed to save local database file.' });
+  }
+});
+
+// Helper to get GoogleGenAI client
+function getGenAI() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !apiKey.trim()) {
+    throw new Error('GEMINI_API_KEY is missing in your .env file. Please set GEMINI_API_KEY=your_key in .env');
+  }
+  return new GoogleGenAI({
+    apiKey: apiKey.trim(),
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+}
 
 // Endpoint to automatically parse copy-pasted email or chat text
 app.post('/api/parse-email', async (req, res) => {
@@ -32,6 +73,8 @@ app.post('/api/parse-email', async (req, res) => {
     if (!rawText || typeof rawText !== 'string' || !rawText.trim()) {
       return res.status(400).json({ error: 'Text to parse is empty or missing.' });
     }
+
+    const ai = getGenAI();
 
     const manufacturersContext = existingManufacturers && Array.isArray(existingManufacturers) && existingManufacturers.length > 0
       ? `Registered Manufacturers in Database:\n${existingManufacturers.map((m: any) => `- ID: ${m.id}, Name: ${m.name}`).join('\n')}`
@@ -63,56 +106,73 @@ Extract and fill these exact fields:
 12. outboundReply: If our team sent or replied to the vendor, extract what our team asked or replied.
 13. documentsReceived: List of filenames, datasheets, or PDF manuals mentioned in the text (e.g. ["A7671G_SPEC_202508.pdf"]).`;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            manufacturerName: { type: Type.STRING },
-            matchedManufacturerId: { type: Type.STRING },
-            channel: { type: Type.STRING },
-            detectedType: { type: Type.STRING },
-            subject: { type: Type.STRING },
-            keyOutcome: { type: Type.STRING },
-            status: { type: Type.STRING },
-            nextAction: { type: Type.STRING },
-            followUpDate: { type: Type.STRING },
-            informationReceived: { type: Type.STRING },
-            inboundContent: { type: Type.STRING },
-            outboundReply: { type: Type.STRING },
-            documentsReceived: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
+    const modelsToTry = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+    let lastError: any = null;
+    let parsed: any = null;
+
+    for (const modelName of modelsToTry) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                manufacturerName: { type: Type.STRING },
+                matchedManufacturerId: { type: Type.STRING },
+                channel: { type: Type.STRING },
+                detectedType: { type: Type.STRING },
+                subject: { type: Type.STRING },
+                keyOutcome: { type: Type.STRING },
+                status: { type: Type.STRING },
+                nextAction: { type: Type.STRING },
+                followUpDate: { type: Type.STRING },
+                informationReceived: { type: Type.STRING },
+                inboundContent: { type: Type.STRING },
+                outboundReply: { type: Type.STRING },
+                documentsReceived: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+              },
+              required: [
+                'manufacturerName',
+                'matchedManufacturerId',
+                'channel',
+                'detectedType',
+                'subject',
+                'keyOutcome',
+                'status',
+                'nextAction',
+                'followUpDate',
+                'informationReceived',
+                'inboundContent',
+                'outboundReply',
+                'documentsReceived',
+              ],
             },
           },
-          required: [
-            'manufacturerName',
-            'matchedManufacturerId',
-            'channel',
-            'detectedType',
-            'subject',
-            'keyOutcome',
-            'status',
-            'nextAction',
-            'followUpDate',
-            'informationReceived',
-            'inboundContent',
-            'outboundReply',
-            'documentsReceived',
-          ],
-        },
-      },
-    });
+        });
 
-    const parsed = JSON.parse(response.text || '{}');
+        parsed = JSON.parse(response.text || '{}');
+        break; // Success! Break out of loop.
+      } catch (err: any) {
+        console.warn(`Model ${modelName} failed, trying fallback:`, err.message || err);
+        lastError = err;
+      }
+    }
+
+    if (!parsed) {
+      throw lastError || new Error('All Gemini model endpoints failed.');
+    }
+
     return res.json({ success: true, data: parsed });
   } catch (error: any) {
     console.error('Error in /api/parse-email:', error);
     return res.status(500).json({
-      error: 'Failed to process email text with AI.',
+      error: error.message || 'Failed to process email text with AI.',
       details: error.message || String(error),
     });
   }

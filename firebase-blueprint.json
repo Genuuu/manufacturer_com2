@@ -1,0 +1,98 @@
+{
+  "entities": {
+    "Manufacturer": {
+      "title": "Manufacturer",
+      "description": "Supplier or manufacturer profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "website": { "type": "string" },
+        "contactPortal": { "type": "string" },
+        "productsOfInterest": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Removed", "Archived"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "status"]
+    },
+    "CommunicationEntry": {
+      "title": "CommunicationEntry",
+      "description": "Communication log item with supplier",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "manufacturerId": { "type": "string" },
+        "manufacturerName": { "type": "string" },
+        "threadSelection": { "type": "string" },
+        "threadId": { "type": "string" },
+        "channel": { "type": "string" },
+        "subject": { "type": "string" },
+        "keyOutcome": { "type": "string" },
+        "status": { "type": "string" },
+        "nextAction": { "type": "string" },
+        "followUpDate": { "type": "string" },
+        "threadDoc": { "type": "string" },
+        "fullEmailText": { "type": "string" },
+        "documentsReceived": { "type": "array" },
+        "informationReceived": { "type": "string" },
+        "entryKey": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "date", "manufacturerId", "channel", "subject"]
+    },
+    "AppUser": {
+      "title": "AppUser",
+      "description": "User account profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "manager", "engineer", "auditor"] },
+        "department": { "type": "string" },
+        "avatar": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "lastLogin": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "AuditLogItem": {
+      "title": "AuditLogItem",
+      "description": "Audit trail log event",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "action": { "type": "string" },
+        "category": { "type": "string" },
+        "details": { "type": "string" },
+        "targetId": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "userId", "action"]
+    }
+  },
+  "firestore": {
+    "/manufacturers/{manufacturerId}": {
+      "schema": { "$ref": "#/entities/Manufacturer" },
+      "description": "Collection of all manufacturers and suppliers"
+    },
+    "/communications/{communicationId}": {
+      "schema": { "$ref": "#/entities/CommunicationEntry" },
+      "description": "Collection of all communication entries"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/AppUser" },
+      "description": "Collection of registered team users"
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLogItem" },
+      "description": "Collection of audit trail events"
+    }
+  }
+}
