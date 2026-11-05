@@ -185,7 +185,7 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
                         </span>
                         <span className="text-slate-300">·</span>
                         <span className="text-xs text-slate-500 font-medium">
-                          Logged by {comm.createdBy || 'Sarah Jenkins'}
+                          Logged by {comm.createdBy || 'Team Member'}
                         </span>
                       </div>
 

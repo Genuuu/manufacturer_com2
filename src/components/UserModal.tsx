@@ -141,7 +141,7 @@ export const UserModal: React.FC<UserModalProps> = ({
               required
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="e.g. Sarah Jenkins"
+              placeholder="Enter full name"
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
             />
           </div>
@@ -157,7 +157,7 @@ export const UserModal: React.FC<UserModalProps> = ({
               required
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="e.g. sarah.j@company.com"
+              placeholder="user@company.com"
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 font-mono text-xs"
             />
           </div>

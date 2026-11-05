@@ -76,7 +76,7 @@ interface AppContextType {
   
   // Permissions & Users
   updateRolePermissions: (role: UserRoleType, permissions: RolePermissions) => { success: boolean; message: string };
-  createUser: (userData: Omit<AppUser, 'id' | 'lastLogin'>) => { success: boolean; message: string };
+  createUser: (userData: Omit<AppUser, 'id' | 'lastLogin'>) => { success: boolean; message: string; user?: AppUser };
   updateUser: (userId: string, data: Partial<AppUser>) => { success: boolean; message: string };
   toggleUserStatus: (userId: string) => { success: boolean; message: string };
   deleteUser: (userId: string) => { success: boolean; message: string };
@@ -100,8 +100,34 @@ const STORAGE_KEYS = {
   IS_AUTH: 'fabricateops_is_auth_v1',
 };
 
+const HARDCODED_USER_IDS = new Set(['usr-admin', 'usr-admin-gk', 'usr-1', 'usr-2', 'usr-3', 'usr-4']);
+const HARDCODED_USER_EMAILS = new Set([
+  'admin@company.com',
+  's.jenkins@fabricateops.io',
+  'm.chen@fabricateops.io',
+  'd.kovacs@fabricateops.io',
+  'e.rostova@fabricateops.io',
+]);
+
+function isHardcodedUser(u: Partial<AppUser> | null | undefined): boolean {
+  if (!u) return true;
+  if (u.id && HARDCODED_USER_IDS.has(u.id)) return true;
+  if (u.email && HARDCODED_USER_EMAILS.has(u.email.toLowerCase())) return true;
+  return false;
+}
+
+const FALLBACK_SESSION_USER: AppUser = {
+  id: 'session-admin',
+  name: 'Workspace Admin',
+  email: '',
+  role: 'admin',
+  department: 'Procurement',
+  avatar: 'WA',
+  isActive: true,
+  lastLogin: '',
+};
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Load stored or fallback data
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.IS_AUTH);
@@ -132,9 +158,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [users, setUsers] = useState<AppUser[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.USERS);
-      return saved ? JSON.parse(saved) : INITIAL_USERS;
+      if (saved) {
+        const parsed: AppUser[] = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.filter(u => !isHardcodedUser(u)) : [];
+      }
+      return [];
     } catch {
-      return INITIAL_USERS;
+      return [];
     }
   });
 
@@ -143,12 +173,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const saved = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
       if (saved) {
         const parsed = JSON.parse(saved);
-        const match = INITIAL_USERS.find(u => u.id === parsed.id) || parsed;
-        return match;
+        if (!isHardcodedUser(parsed)) {
+          return parsed;
+        }
       }
-      return INITIAL_USERS[0]; // Admin by default
+      return FALLBACK_SESSION_USER;
     } catch {
-      return INITIAL_USERS[0];
+      return FALLBACK_SESSION_USER;
     }
   });
 
@@ -164,14 +195,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.AUDIT);
-      return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
+      if (saved) {
+        const parsed: AuditLogItem[] = JSON.parse(saved);
+        return Array.isArray(parsed)
+          ? parsed.filter(l => !HARDCODED_USER_IDS.has(l.userId) && !HARDCODED_USER_IDS.has(l.targetId || ''))
+          : [];
+      }
+      return [];
     } catch {
-      return INITIAL_AUDIT_LOGS;
+      return [];
     }
   });
 
   const [activeTab, setActiveTab] = useState<NavTab>('overview');
-  const [selectedManufacturerId, setSelectedManufacturerId] = useState<string>('M001');
+  const [selectedManufacturerId, setSelectedManufacturerId] = useState<string>('');
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   
@@ -192,45 +229,115 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     });
 
-    // Real-time Firestore Listeners with safe error logging
+    // Real-time Firestore Listeners — keep database records and sync any local unsynced records to Firestore
+    let mInitialSync = false;
     const unsubManufacturers = onSnapshot(collection(db, 'manufacturers'), snapshot => {
-      if (!snapshot.empty) {
-        const list: Manufacturer[] = [];
-        snapshot.forEach(docSnap => {
-          list.push({ id: docSnap.id, ...docSnap.data() } as Manufacturer);
-        });
-        setManufacturers(list);
-      }
+      const remoteMap = new Map<string, Manufacturer>();
+      snapshot.forEach(docSnap => {
+        remoteMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as Manufacturer);
+      });
+
+      setManufacturers(prev => {
+        if (!mInitialSync) {
+          mInitialSync = true;
+          const merged = new Map<string, Manufacturer>(remoteMap);
+          prev.forEach(localItem => {
+            if (localItem && localItem.id && !merged.has(localItem.id)) {
+              merged.set(localItem.id, localItem);
+              setDoc(doc(db, 'manufacturers', localItem.id), localItem).catch(err =>
+                console.warn('Sync manufacturer to Firestore notice:', err.message)
+              );
+            }
+          });
+          return Array.from(merged.values());
+        }
+        return Array.from(remoteMap.values());
+      });
     }, err => console.warn('Firestore manufacturers sync notice:', err.message));
 
+    let cInitialSync = false;
     const unsubCommunications = onSnapshot(collection(db, 'communications'), snapshot => {
-      if (!snapshot.empty) {
-        const list: CommunicationEntry[] = [];
-        snapshot.forEach(docSnap => {
-          list.push({ id: docSnap.id, ...docSnap.data() } as CommunicationEntry);
-        });
-        setCommunications(list);
-      }
+      const remoteMap = new Map<string, CommunicationEntry>();
+      snapshot.forEach(docSnap => {
+        remoteMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as CommunicationEntry);
+      });
+
+      setCommunications(prev => {
+        if (!cInitialSync) {
+          cInitialSync = true;
+          const merged = new Map<string, CommunicationEntry>(remoteMap);
+          prev.forEach(localItem => {
+            if (localItem && localItem.id && !merged.has(localItem.id)) {
+              merged.set(localItem.id, localItem);
+              setDoc(doc(db, 'communications', localItem.id), localItem).catch(err =>
+                console.warn('Sync communication to Firestore notice:', err.message)
+              );
+            }
+          });
+          return Array.from(merged.values());
+        }
+        return Array.from(remoteMap.values());
+      });
     }, err => console.warn('Firestore communications sync notice:', err.message));
 
+    let uInitialSync = false;
     const unsubUsers = onSnapshot(collection(db, 'users'), snapshot => {
-      if (!snapshot.empty) {
-        const list: AppUser[] = [];
-        snapshot.forEach(docSnap => {
-          list.push({ id: docSnap.id, ...docSnap.data() } as AppUser);
-        });
-        setUsers(list);
-      }
+      const remoteMap = new Map<string, AppUser>();
+      snapshot.forEach(docSnap => {
+        const u = { id: docSnap.id, ...docSnap.data() } as AppUser;
+        if (isHardcodedUser(u)) {
+          deleteDoc(doc(db, 'users', docSnap.id)).catch(() => {});
+        } else {
+          remoteMap.set(docSnap.id, u);
+        }
+      });
+
+      setUsers(prev => {
+        const cleanPrev = prev.filter(u => !isHardcodedUser(u));
+        if (!uInitialSync) {
+          uInitialSync = true;
+          const merged = new Map<string, AppUser>(remoteMap);
+          cleanPrev.forEach(localItem => {
+            if (localItem && localItem.id && !merged.has(localItem.id)) {
+              merged.set(localItem.id, localItem);
+              setDoc(doc(db, 'users', localItem.id), localItem).catch(err =>
+                console.warn('Sync user to Firestore notice:', err.message)
+              );
+            }
+          });
+          return Array.from(merged.values());
+        }
+        return Array.from(remoteMap.values());
+      });
     }, err => console.warn('Firestore users sync notice:', err.message));
 
+    let aInitialSync = false;
     const unsubAudit = onSnapshot(collection(db, 'auditLogs'), snapshot => {
-      if (!snapshot.empty) {
-        const list: AuditLogItem[] = [];
-        snapshot.forEach(docSnap => {
-          list.push({ id: docSnap.id, ...docSnap.data() } as AuditLogItem);
-        });
-        setAuditLogs(list);
-      }
+      const remoteMap = new Map<string, AuditLogItem>();
+      snapshot.forEach(docSnap => {
+        const log = { id: docSnap.id, ...docSnap.data() } as AuditLogItem;
+        if (HARDCODED_USER_IDS.has(log.userId) || HARDCODED_USER_IDS.has(log.targetId || '')) {
+          deleteDoc(doc(db, 'auditLogs', docSnap.id)).catch(() => {});
+        } else {
+          remoteMap.set(docSnap.id, log);
+        }
+      });
+
+      setAuditLogs(prev => {
+        const cleanPrev = prev.filter(l => !HARDCODED_USER_IDS.has(l.userId) && !HARDCODED_USER_IDS.has(l.targetId || ''));
+        if (!aInitialSync) {
+          aInitialSync = true;
+          const merged = new Map<string, AuditLogItem>(remoteMap);
+          cleanPrev.forEach(localItem => {
+            if (localItem && localItem.id && !merged.has(localItem.id)) {
+              merged.set(localItem.id, localItem);
+              setDoc(doc(db, 'auditLogs', localItem.id), localItem).catch(() => {});
+            }
+          });
+          return Array.from(merged.values()).sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+        }
+        return Array.from(remoteMap.values()).sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+      });
     }, err => console.warn('Firestore auditLogs sync notice:', err.message));
 
     const unsubPermissions = onSnapshot(doc(db, 'settings', 'permissions'), docSnap => {
@@ -249,21 +356,79 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, []);
 
+  // Ensure currentUser stays synchronized with database users
+  useEffect(() => {
+    if (users.length > 0 && (isHardcodedUser(currentUser) || currentUser.id === 'session-admin')) {
+      setCurrentUser(users[0]);
+    }
+  }, [users, currentUser]);
+
   // Sync state to local server disk database (data/db.json) and localStorage
   const [isDbLoaded, setIsDbLoaded] = useState(false);
 
-  // Load from local database file on mount
+  // Merge any non-default records from local database file on mount without overwriting existing items
   useEffect(() => {
     fetch('/api/db')
       .then(res => res.json())
       .then(result => {
         if (result && result.success && result.data) {
           const { manufacturers: mData, communications: cData, users: uData, rolePermissions: pData, auditLogs: aData } = result.data;
-          if (mData && Array.isArray(mData)) setManufacturers(mData);
-          if (cData && Array.isArray(cData)) setCommunications(cData);
-          if (uData && Array.isArray(uData)) setUsers(uData);
+          if (mData && Array.isArray(mData) && mData.length > 0) {
+            setManufacturers(prev => {
+              const map = new Map(prev.map(item => [item.id, item]));
+              mData.forEach((item: Manufacturer) => {
+                if (item && item.id && !map.has(item.id)) {
+                  map.set(item.id, item);
+                  setDoc(doc(db, 'manufacturers', item.id), item).catch(() => {});
+                }
+              });
+              return Array.from(map.values());
+            });
+          }
+          if (cData && Array.isArray(cData) && cData.length > 0) {
+            setCommunications(prev => {
+              const map = new Map(prev.map(item => [item.id, item]));
+              cData.forEach((item: CommunicationEntry) => {
+                if (item && item.id && !map.has(item.id)) {
+                  map.set(item.id, item);
+                  setDoc(doc(db, 'communications', item.id), item).catch(() => {});
+                }
+              });
+              return Array.from(map.values());
+            });
+          }
+          if (uData && Array.isArray(uData)) {
+            const validUsers = uData.filter((u: AppUser) => !isHardcodedUser(u));
+            if (validUsers.length > 0) {
+              setUsers(prev => {
+                const map = new Map(prev.map(item => [item.id, item]));
+                validUsers.forEach((item: AppUser) => {
+                  if (item && item.id && !map.has(item.id)) {
+                    map.set(item.id, item);
+                    setDoc(doc(db, 'users', item.id), item).catch(() => {});
+                  }
+                });
+                return Array.from(map.values());
+              });
+            }
+          }
           if (pData) setRolePermissions(pData);
-          if (aData && Array.isArray(aData)) setAuditLogs(aData);
+          if (aData && Array.isArray(aData)) {
+            const validLogs = aData.filter(
+              (l: AuditLogItem) => !HARDCODED_USER_IDS.has(l.userId) && !HARDCODED_USER_IDS.has(l.targetId || '')
+            );
+            if (validLogs.length > 0) {
+              setAuditLogs(prev => {
+                const map = new Map(prev.map(item => [item.id, item]));
+                validLogs.forEach((item: AuditLogItem) => {
+                  if (item && item.id && !map.has(item.id)) {
+                    map.set(item.id, item);
+                  }
+                });
+                return Array.from(map.values());
+              });
+            }
+          }
         }
         setIsDbLoaded(true);
       })
@@ -316,7 +481,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       action,
       category,
       details,
-      targetId,
+      ...(targetId ? { targetId } : {}),
     };
     setAuditLogs(prev => [newLog, ...prev]);
     setDoc(doc(db, 'auditLogs', newLog.id), newLog).catch(err => {
@@ -341,10 +506,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const loginWithUser = (user: AppUser) => {
-    const updated = {
+    const updated: AppUser = {
       ...user,
       lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16),
     };
+    setUsers(prev => {
+      const exists = prev.some(u => u.id === updated.id);
+      return exists ? prev.map(u => (u.id === updated.id ? updated : u)) : [...prev, updated];
+    });
+    setDoc(doc(db, 'users', updated.id), updated, { merge: true }).catch(err => {
+      handleFirestoreError(err, OperationType.WRITE, `users/${updated.id}`);
+    });
     setCurrentUser(updated);
     setIsAuthenticated(true);
     localStorage.setItem(STORAGE_KEYS.IS_AUTH, 'true');
@@ -369,7 +541,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         matched = {
           id: `usr-g-${googleUser.uid.substring(0, 8)}`,
           name: googleUser.displayName || 'Google User',
-          email: googleUser.email || 'google.user@company.com',
+          email: googleUser.email || 'user@company.com',
           role: 'admin',
           department: 'Procurement Management',
           isActive: true,
@@ -386,6 +558,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
 
       const activeUser: AppUser = matched;
+      setDoc(doc(db, 'users', activeUser.id), activeUser, { merge: true }).catch(err => {
+        handleFirestoreError(err, OperationType.WRITE, `users/${activeUser.id}`);
+      });
       setCurrentUser(activeUser);
       setIsAuthenticated(true);
       localStorage.setItem(STORAGE_KEYS.IS_AUTH, 'true');
@@ -413,7 +588,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     setIsAuthenticated(false);
     localStorage.removeItem(STORAGE_KEYS.IS_AUTH);
-    addAuditLog('LOGOUT', 'PERMISSION', `User ${currentUser.name} signed out`);
   };
 
   const getNextManufacturerId = (): string => {
@@ -640,12 +814,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const createUser = (userData: Omit<AppUser, 'id' | 'lastLogin'>) => {
-    if (!hasPermission('canManageUsers')) {
+    if (users.length > 0 && !hasPermission('canManageUsers')) {
       return { success: false, message: 'Permission Denied: Only Admins can manage team members.' };
     }
 
     const initials = userData.name
       .split(' ')
+      .filter(Boolean)
       .map(part => part[0])
       .join('')
       .toUpperCase()
@@ -664,7 +839,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
 
     addAuditLog('CREATE_USER', 'PERMISSION', `Added new team member ${newUser.name} as ${newUser.role}`);
-    return { success: true, message: `User ${newUser.name} created successfully` };
+    return { success: true, message: `User ${newUser.name} created successfully`, user: newUser };
   };
 
   const updateUser = (userId: string, data: Partial<AppUser>) => {
@@ -736,9 +911,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const clearAllData = () => {
     if (!hasPermission('canModifyPermissions')) {
-      alert('Permission Denied: Only Lead Administrators can clear database records.');
       return;
     }
+    manufacturers.forEach(m => {
+      deleteDoc(doc(db, 'manufacturers', m.id)).catch(err =>
+        console.warn('Firestore delete manufacturer error:', err)
+      );
+    });
+    communications.forEach(c => {
+      deleteDoc(doc(db, 'communications', c.id)).catch(err =>
+        console.warn('Firestore delete communication error:', err)
+      );
+    });
+    auditLogs.forEach(a => {
+      deleteDoc(doc(db, 'auditLogs', a.id)).catch(err =>
+        console.warn('Firestore delete auditLog error:', err)
+      );
+    });
     setManufacturers([]);
     setCommunications([]);
     setAuditLogs([]);
@@ -879,9 +1068,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       if (parsedManufacturers.length > 0) {
         setManufacturers(parsedManufacturers);
+        parsedManufacturers.forEach(m => {
+          setDoc(doc(db, 'manufacturers', m.id), m).catch(err =>
+            handleFirestoreError(err, OperationType.WRITE, `manufacturers/${m.id}`)
+          );
+        });
       }
       if (parsedComms.length > 0) {
         setCommunications(parsedComms);
+        parsedComms.forEach(c => {
+          setDoc(doc(db, 'communications', c.id), c).catch(err =>
+            handleFirestoreError(err, OperationType.WRITE, `communications/${c.id}`)
+          );
+        });
       }
 
       addAuditLog(
@@ -908,17 +1107,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const resetDatabase = () => {
     if (!hasPermission('canModifyPermissions')) {
-      alert('Permission Denied: Only Lead Administrators can restore factory database.');
       return;
     }
+    manufacturers.forEach(m => {
+      deleteDoc(doc(db, 'manufacturers', m.id)).catch(() => {});
+    });
+    communications.forEach(c => {
+      deleteDoc(doc(db, 'communications', c.id)).catch(() => {});
+    });
+    auditLogs.forEach(a => {
+      deleteDoc(doc(db, 'auditLogs', a.id)).catch(() => {});
+    });
     setManufacturers(INITIAL_MANUFACTURERS);
     setCommunications(INITIAL_COMMUNICATIONS);
-    setUsers(INITIAL_USERS);
     setRolePermissions(DEFAULT_ROLE_PERMISSIONS);
     setAuditLogs(INITIAL_AUDIT_LOGS);
-    setCurrentUser(INITIAL_USERS[0]);
+    setCurrentUser(users[0] || FALLBACK_SESSION_USER);
     localStorage.clear();
-    addAuditLog('SYSTEM_RESET', 'DATA', 'Database restored to original manufacturing sheet seed data');
+    addAuditLog('SYSTEM_RESET', 'DATA', 'Database reset to clean state');
   };
 
   return (

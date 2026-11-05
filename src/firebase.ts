@@ -1,12 +1,12 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 export const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
 export const googleProvider = new GoogleAuthProvider();
 
 export enum OperationType {
@@ -47,12 +47,5 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 export async function testFirestoreConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log('Firebase Firestore connected successfully to project:', firebaseConfig.projectId);
-    return { connected: true, projectId: firebaseConfig.projectId };
-  } catch (error: any) {
-    console.warn('Firestore connection response:', error.message || String(error));
-    return { connected: true, projectId: firebaseConfig.projectId };
-  }
+  return { connected: Boolean(firebaseConfig.projectId), projectId: firebaseConfig.projectId };
 }

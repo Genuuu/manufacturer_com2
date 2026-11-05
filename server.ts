@@ -78,7 +78,7 @@ app.post('/api/parse-email', async (req, res) => {
 
     const manufacturersContext = existingManufacturers && Array.isArray(existingManufacturers) && existingManufacturers.length > 0
       ? `Registered Manufacturers in Database:\n${existingManufacturers.map((m: any) => `- ID: ${m.id}, Name: ${m.name}`).join('\n')}`
-      : 'Registered Manufacturers in Database: JLCPCB (M001), PCBWay (M002), SIMCom (M003)';
+      : 'Registered Manufacturers in Database: None registered yet.';
 
     const prompt = `You are an expert procurement and hardware supply chain assistant.
 Analyze the following copy-pasted raw email or live chat transcript between a hardware engineering team and a supplier/manufacturer.
@@ -92,19 +92,19 @@ ${rawText}
 """
 
 Extract and fill these exact fields:
-1. manufacturerName: Name of the manufacturer/vendor (e.g. SIMCom, JLCPCB, PCBWay, Quectel).
-2. matchedManufacturerId: Matched ID from the registered manufacturers list if it matches (e.g. M001, M002, M003), or empty string if not found.
+1. manufacturerName: Name of the manufacturer/vendor.
+2. matchedManufacturerId: Matched ID from the registered manufacturers list if it matches (e.g. M001, M002), or empty string if not found.
 3. channel: One of: "Email - Received", "Email - Sent", "Thread Reply (Sent)", "Live Chat (Session)", "Website", "Phone Call", "Video Meeting", "Portal / Ticket".
 4. detectedType: One of: "received" (vendor wrote to us), "sent" (we wrote to vendor), "reply" (reply to existing thread), "combined_thread" (text contains both vendor message and our reply).
 5. subject: Concise summary title for this interaction (under 12 words).
 6. keyOutcome: Core outcome or response summary (1-2 clear sentences summarizing what was agreed, quoted, or answered).
 7. status: One of: "Completed", "Awaiting Reply", "Information Received", "Pending Review", "Action Required".
 8. nextAction: Suggested follow-up step or next action for the engineering/procurement team.
-9. followUpDate: Suggested follow-up date in YYYY-MM-DD format if mentioned or implied (or empty string if none). Reference current year baseline is 2026.
-10. informationReceived: Detailed technical notes, quotation prices (e.g. unit costs, EXW pricing, MOQ, lead times), EVK/samples, part numbers (e.g., A7671G-MBXV), or technical specs mentioned.
+9. followUpDate: Suggested follow-up date in YYYY-MM-DD format if mentioned or implied (or empty string if none).
+10. informationReceived: Detailed technical notes, quotation prices (e.g. unit costs, EXW pricing, MOQ, lead times), EVK/samples, part numbers, or technical specs mentioned.
 11. inboundContent: If vendor sent text, extract what the vendor stated/quoted.
 12. outboundReply: If our team sent or replied to the vendor, extract what our team asked or replied.
-13. documentsReceived: List of filenames, datasheets, or PDF manuals mentioned in the text (e.g. ["A7671G_SPEC_202508.pdf"]).`;
+13. documentsReceived: List of filenames, datasheets, or PDF manuals mentioned in the text.`;
 
     const modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
     let lastError: any = null;

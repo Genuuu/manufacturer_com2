@@ -252,7 +252,7 @@ export const AccessView: React.FC = () => {
                 Team Members ({users.length})
               </h3>
               <p className="text-[11px] text-slate-500">
-                Add users, manage access states, and switch active role for testing
+                Add users, assign security roles, and manage account access
               </p>
             </div>
           </div>
@@ -312,17 +312,6 @@ export const AccessView: React.FC = () => {
                   <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${rInfo?.badge}`}>
                     {rInfo?.name}
                   </span>
-
-                  {!isCurrent && (
-                    <button
-                      onClick={() => switchUser(u.id)}
-                      title="Switch session to test this user's role"
-                      className="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg flex items-center gap-1 transition-colors"
-                    >
-                      <UserCheck className="h-3.5 w-3.5 text-indigo-600" />
-                      <span>Switch Session</span>
-                    </button>
-                  )}
 
                   <button
                     onClick={() => handleOpenEditUser(u)}

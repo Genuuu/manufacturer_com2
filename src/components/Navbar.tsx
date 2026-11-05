@@ -1,16 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useApp, NavTab } from '../context/AppContext';
+import { useApp } from '../context/AppContext';
 import {
   Layers,
   Plus,
   Shield,
   ChevronDown,
-  UserCheck,
   Building2,
   MessageSquare,
   Lock,
   Wand2,
-  Sparkles,
   BarChart3,
   LogOut,
 } from 'lucide-react';
@@ -24,14 +22,11 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenCommModal,
   onOpenAiCommModal,
-  onOpenManufacturerModal,
 }) => {
   const {
     activeTab,
     setActiveTab,
     currentUser,
-    users,
-    switchUser,
     hasPermission,
     manufacturers,
     communications,
@@ -91,59 +86,53 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-2xs">
       <div className="max-w-7xl mx-auto px-2.5 sm:px-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between py-2 sm:py-0 sm:h-16 gap-2 sm:gap-4">
-          
-          {/* Top Row on Mobile: Brand + User Switcher + Actions */}
+          {/* Top Row on Mobile: Brand + Account Menu + Actions */}
           <div className="flex items-center justify-between w-full sm:w-auto gap-2">
-            
             {/* Brand */}
             <div className="flex items-center gap-2 shrink-0">
               <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold shadow-xs">
                 <Layers className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-400" />
               </div>
               <div>
-                <span className="font-bold text-slate-900 text-sm sm:text-base tracking-tight">Manufacturer Communication</span>
-                <p className="text-[10px] sm:text-[11px] text-slate-500 hidden md:block">Procurement & Supplier Tracker</p>
+                <span className="font-bold text-slate-900 text-sm sm:text-base tracking-tight">
+                  Manufacturer Communication
+                </span>
+                <p className="text-[10px] sm:text-[11px] text-slate-500 hidden md:block">
+                  Procurement & Supplier Tracker
+                </p>
               </div>
             </div>
 
-            {/* Mobile Actions: Role Switcher & Log Comm */}
+            {/* Mobile Actions: Account Menu & Log Comm */}
             <div className="flex items-center gap-1.5 sm:hidden shrink-0">
-              
-              {/* Role Switcher */}
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
                   className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs"
                 >
-                  <span className="font-bold text-slate-800 text-[11px]">{currentUser.name.split(' ')[0]}</span>
+                  <span className="font-bold text-slate-800 text-[11px]">
+                    {currentUser.name.split(' ')[0]}
+                  </span>
                   <ChevronDown className="h-3 w-3 text-slate-400" />
                 </button>
 
                 {userDropdownOpen && (
-                  <div className="absolute right-0 mt-1.5 w-56 bg-white rounded-xl shadow-lg border border-slate-200 p-2 z-50">
-                    <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                      Switch Role
-                    </div>
-                    <div className="space-y-1 mt-1">
-                      {users.map(u => (
-                        <button
-                          key={u.id}
-                          onClick={() => {
-                            switchUser(u.id);
-                            setUserDropdownOpen(false);
-                          }}
-                          className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs hover:bg-slate-50"
-                        >
-                          <div>
-                            <div className="font-medium text-slate-900">{u.name}</div>
-                            <div className="text-[10px] text-slate-400 capitalize">{u.role}</div>
-                          </div>
-                          {u.id === currentUser.id && <UserCheck className="h-3.5 w-3.5 text-indigo-600" />}
-                        </button>
-                      ))}
+                  <div className="absolute right-0 mt-1.5 w-56 bg-white rounded-xl shadow-lg border border-slate-200 p-2.5 z-50">
+                    <div className="px-2 py-1.5 border-b border-slate-100">
+                      <div className="font-semibold text-xs text-slate-900">{currentUser.name}</div>
+                      {currentUser.email && (
+                        <div className="text-[11px] text-slate-500 truncate">{currentUser.email}</div>
+                      )}
+                      <span
+                        className={`inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.2 rounded border ${getRoleBadge(
+                          currentUser.role
+                        )}`}
+                      >
+                        {getRoleLabel(currentUser.role)}
+                      </span>
                     </div>
 
-                    <div className="mt-2 pt-2 border-t border-slate-100">
+                    <div className="mt-1.5">
                       <button
                         onClick={() => {
                           setUserDropdownOpen(false);
@@ -178,9 +167,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
-
             </div>
-
           </div>
 
           {/* Central Navigation Tabs */}
@@ -208,9 +195,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <MessageSquare className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">Comms</span>
-                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full hidden xs:inline-block ${
-                  activeTab === 'communications' ? 'bg-slate-100 text-slate-700' : 'bg-slate-200/60 text-slate-600'
-                }`}>
+                <span
+                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full hidden xs:inline-block ${
+                    activeTab === 'communications'
+                      ? 'bg-slate-100 text-slate-700'
+                      : 'bg-slate-200/60 text-slate-600'
+                  }`}
+                >
                   {communications.length}
                 </span>
               </button>
@@ -225,9 +216,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <Building2 className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">Vendors</span>
-                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full hidden xs:inline-block ${
-                  activeTab === 'manufacturers' ? 'bg-slate-100 text-slate-700' : 'bg-slate-200/60 text-slate-600'
-                }`}>
+                <span
+                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full hidden xs:inline-block ${
+                    activeTab === 'manufacturers'
+                      ? 'bg-slate-100 text-slate-700'
+                      : 'bg-slate-200/60 text-slate-600'
+                  }`}
+                >
                   {manufacturers.length}
                 </span>
               </button>
@@ -244,7 +239,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <Shield className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">Permissions</span>
-                  <span className="text-[9px] bg-indigo-500 text-white font-bold px-1 py-0.2 rounded hidden sm:inline-block">Admin</span>
+                  <span className="text-[9px] bg-indigo-500 text-white font-bold px-1 py-0.2 rounded hidden sm:inline-block">
+                    Admin
+                  </span>
                 </button>
               )}
             </div>
@@ -252,67 +249,46 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Desktop Right Actions */}
           <div className="hidden sm:flex items-center gap-2 shrink-0">
-            
-            {/* Quick User Role Switcher */}
+            {/* Active User Profile Menu */}
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs transition-colors"
-                title="Switch test role"
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs transition-colors cursor-pointer"
+                title="Account Menu"
               >
                 <div className="h-5 w-5 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] font-bold">
                   {currentUser.avatar}
                 </div>
                 <span className="font-semibold text-slate-800">{currentUser.name.split(' ')[0]}</span>
-                <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border ${getRoleBadge(currentUser.role)}`}>
+                <span
+                  className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border ${getRoleBadge(
+                    currentUser.role
+                  )}`}
+                >
                   {getRoleLabel(currentUser.role)}
                 </span>
                 <ChevronDown className="h-3 w-3 text-slate-400" />
               </button>
 
               {userDropdownOpen && (
-                <div className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-lg border border-slate-200 p-2 z-50 animate-in fade-in">
-                  <div className="px-2 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Switch Test Account (RBAC)
-                  </div>
-                  <div className="space-y-1 mt-1">
-                    {users.map(u => {
-                      const isSelected = u.id === currentUser.id;
-                      return (
-                        <button
-                          key={u.id}
-                          onClick={() => {
-                            switchUser(u.id);
-                            setUserDropdownOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-left text-xs transition-colors ${
-                            isSelected
-                              ? 'bg-indigo-50 text-indigo-900 font-semibold'
-                              : 'hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="h-5 w-5 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold">
-                              {u.avatar}
-                            </span>
-                            <div>
-                              <div>{u.name}</div>
-                              <div className="text-[10px] text-slate-400 capitalize">{u.role}</div>
-                            </div>
-                          </div>
-                          {isSelected && <UserCheck className="h-4 w-4 text-indigo-600" />}
-                        </button>
-                      );
-                    })}
+                <div className="absolute right-0 mt-1.5 w-60 bg-white rounded-xl shadow-lg border border-slate-200 p-2.5 z-50 animate-in fade-in">
+                  <div className="px-2 py-1.5 border-b border-slate-100">
+                    <div className="font-bold text-xs text-slate-900">{currentUser.name}</div>
+                    {currentUser.email && (
+                      <div className="text-[11px] text-slate-500 truncate mt-0.5">{currentUser.email}</div>
+                    )}
+                    {currentUser.department && (
+                      <div className="text-[10px] text-slate-400 mt-0.5">{currentUser.department}</div>
+                    )}
                   </div>
 
-                  <div className="mt-2 pt-2 border-t border-slate-100">
+                  <div className="mt-1.5">
                     <button
                       onClick={() => {
                         setUserDropdownOpen(false);
                         logout();
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                     >
                       <LogOut className="h-3.5 w-3.5 text-red-500" />
                       <span>Sign Out</span>
@@ -322,12 +298,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </div>
 
-            {/* ✨ AI Paste Email Button */}
+            {/* AI Paste Email Button */}
             <button
               onClick={onOpenAiCommModal}
               disabled={!hasPermission('canLogCommunication')}
               title="Paste raw email or chat text to automatically fill fields with AI"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-900 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-indigo-900 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors disabled:opacity-40 cursor-pointer"
             >
               <Wand2 className="h-3.5 w-3.5 text-indigo-600" />
               <span>Paste Email (AI)</span>
@@ -338,7 +314,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onOpenCommModal}
               disabled={!hasPermission('canLogCommunication')}
               title={!hasPermission('canLogCommunication') ? 'Your role has read-only access' : 'Record new communication'}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-xs disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-xs disabled:opacity-40 cursor-pointer"
             >
               {!hasPermission('canLogCommunication') ? (
                 <Lock className="h-3.5 w-3.5" />
@@ -347,7 +323,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
               <span>Log Comm</span>
             </button>
-
           </div>
         </div>
       </div>

@@ -1,23 +1,73 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isValidString(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    function isValidManufacturer(data) {
+      return data.keys().hasAll(['id', 'name', 'status'])
+        && isValidString(data.id, 64)
+        && isValidString(data.name, 300)
+        && data.status in ['Active', 'Removed', 'Archived'];
+    }
+
+    function isValidCommunication(data) {
+      return data.keys().hasAll(['id', 'date', 'manufacturerId', 'channel', 'subject'])
+        && isValidString(data.id, 128)
+        && isValidString(data.date, 40)
+        && isValidString(data.manufacturerId, 64)
+        && isValidString(data.channel, 100)
+        && isValidString(data.subject, 500);
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'role'])
+        && isValidString(data.id, 128)
+        && isValidString(data.name, 200)
+        && isValidString(data.email, 320)
+        && data.role in ['admin', 'manager', 'engineer', 'auditor'];
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['id', 'timestamp', 'action', 'category'])
+        && isValidString(data.id, 128)
+        && isValidString(data.timestamp, 64)
+        && isValidString(data.action, 120)
+        && isValidString(data.category, 64);
+    }
+
     match /manufacturers/{manufacturerId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if isValidManufacturer(request.resource.data);
+      allow delete: if true;
     }
+
     match /communications/{communicationId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if isValidCommunication(request.resource.data);
+      allow delete: if true;
     }
+
     match /users/{userId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if isValidUser(request.resource.data);
+      allow delete: if true;
     }
+
     match /auditLogs/{logId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if isValidAuditLog(request.resource.data);
+      allow delete: if true;
     }
+
     match /settings/{settingId} {
       allow read, write: if true;
     }
+
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

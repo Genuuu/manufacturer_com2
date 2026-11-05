@@ -1,16 +1,50 @@
 {
-  "manufacturers": [],
+  "manufacturers": [
+    {
+      "id": "M001",
+      "updatedAt": "2026-11-05T10:53:10.996Z",
+      "name": "JLCPCB",
+      "notes": "",
+      "productsOfInterest": "",
+      "contactPortal": "",
+      "status": "Active",
+      "website": "https://jlcpcb.com/",
+      "createdAt": "2026-10-25T08:00:00Z"
+    },
+    {
+      "id": "M002",
+      "status": "Active",
+      "createdAt": "2026-11-05T10:53:46.760Z",
+      "productsOfInterest": "",
+      "contactPortal": "",
+      "website": "https://www.pcbway.com/",
+      "name": "PCBWay",
+      "updatedAt": "2026-11-05T10:53:46.760Z",
+      "notes": ""
+    },
+    {
+      "id": "M003",
+      "productsOfInterest": "",
+      "name": "SIMCom",
+      "updatedAt": "2026-11-05T10:54:10.508Z",
+      "status": "Active",
+      "createdAt": "2026-11-05T10:54:10.508Z",
+      "contactPortal": "",
+      "website": "https://www.simcom.com",
+      "notes": ""
+    }
+  ],
   "communications": [],
   "users": [
     {
-      "id": "usr-admin",
-      "name": "Admin User",
-      "email": "admin@company.com",
-      "role": "admin",
-      "department": "Procurement & Management",
-      "avatar": "AU",
+      "id": "usr-1793875763896",
+      "lastLogin": "Never",
+      "department": "",
+      "name": "Thilina Sampath",
       "isActive": true,
-      "lastLogin": "Just now"
+      "email": "2020thilinasampath@gmail.com",
+      "avatar": "TS",
+      "role": "admin"
     }
   ],
   "rolePermissions": {
@@ -67,16 +101,5 @@
       "canViewAuditLog": true
     }
   },
-  "auditLogs": [
-    {
-      "id": "log-1793875047699-u5z5",
-      "timestamp": "2026-11-05T10:37:27.699Z",
-      "userId": "usr-admin",
-      "userName": "Admin User",
-      "action": "LOGIN_TEAM",
-      "category": "PERMISSION",
-      "details": "Team member Admin User logged in",
-      "targetId": "usr-admin"
-    }
-  ]
+  "auditLogs": []
 }

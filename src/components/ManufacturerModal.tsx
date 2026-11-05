@@ -152,7 +152,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
               required
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="e.g. Seeed Studio / KingCredie / Quectel"
+              placeholder="Enter manufacturer name"
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-medium"
             />
           </div>
@@ -185,7 +185,7 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
               type="text"
               value={productsOfInterest}
               onChange={e => setProductsOfInterest(e.target.value)}
-              placeholder="e.g. 5,000 PCBs – Functional testing & test jigs"
+              placeholder="Enter product(s) or services of interest"
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-medium"
             />
           </div>

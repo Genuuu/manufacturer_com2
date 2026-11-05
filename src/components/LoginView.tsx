@@ -1,27 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Layers,
   Shield,
   Lock,
   UserCheck,
-  Building2,
   LogIn,
   AlertCircle,
   CheckCircle2,
-  Sparkles,
   KeyRound,
-  Users
+  Users,
+  UserPlus,
 } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
-  const { users, loginWithUser, loginWithGoogle, firebaseConnected, firebaseProjectId } = useApp();
-  
+  const { users, loginWithUser, loginWithGoogle, createUser, firebaseProjectId } = useApp();
+
   const [selectedUserId, setSelectedUserId] = useState<string>(users[0]?.id || '');
   const [isLoading, setIsLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'google' | 'team'>('google');
+
+  // Create initial admin account state when no users exist in the database
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newDepartment, setNewDepartment] = useState('Operations & Administration');
+
+  useEffect(() => {
+    if (users.length > 0 && !users.some(u => u.id === selectedUserId)) {
+      setSelectedUserId(users[0].id);
+    }
+  }, [users, selectedUserId]);
 
   const handleTeamLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +41,7 @@ export const LoginView: React.FC = () => {
     try {
       const user = users.find(u => u.id === selectedUserId);
       if (!user) {
-        setErrorMessage('Selected user account was not found.');
+        setErrorMessage('Selected user account was not found in the database.');
         setIsLoading(false);
         return;
       }
@@ -44,6 +54,40 @@ export const LoginView: React.FC = () => {
       loginWithUser(user);
     } catch (err: any) {
       setErrorMessage(err.message || 'An error occurred during authentication.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCreateFirstAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    if (!newName.trim() || !newEmail.trim()) {
+      setErrorMessage('Please enter both your name and email address.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = createUser({
+        name: newName.trim(),
+        email: newEmail.trim(),
+        role: 'admin',
+        department: newDepartment.trim() || 'Administration',
+        avatar: '',
+        isActive: true,
+      });
+
+      if (!res.success || !res.user) {
+        setErrorMessage(res.message || 'Could not create account.');
+        setIsLoading(false);
+        return;
+      }
+
+      loginWithUser(res.user);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to register user account.');
     } finally {
       setIsLoading(false);
     }
@@ -96,7 +140,6 @@ export const LoginView: React.FC = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10 px-4 sm:px-0">
         <div className="bg-slate-800/90 backdrop-blur-xl py-8 px-6 shadow-2xl rounded-2xl border border-slate-700/80 sm:px-10">
-          
           {/* Method Tabs */}
           <div className="grid grid-cols-2 gap-1 bg-slate-900/80 p-1 rounded-xl mb-6 border border-slate-700/50">
             <button
@@ -197,13 +240,78 @@ export const LoginView: React.FC = () => {
                 <span>Connected to Firebase Auth ({firebaseProjectId})</span>
               </div>
             </div>
+          ) : users.length === 0 ? (
+            <form onSubmit={handleCreateFirstAccount} className="space-y-4">
+              <div className="text-center space-y-1 mb-2">
+                <p className="text-sm font-semibold text-white">Create Administrator Account</p>
+                <p className="text-xs text-slate-400">
+                  No users are registered in the database yet. Create your administrator profile to get started.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  placeholder="Enter your name"
+                  className="w-full px-3.5 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Email Address *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={newEmail}
+                  onChange={e => setNewEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  className="w-full px-3.5 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Department
+                </label>
+                <input
+                  type="text"
+                  value={newDepartment}
+                  onChange={e => setNewDepartment(e.target.value)}
+                  placeholder="e.g. Hardware Engineering"
+                  className="w-full px-3.5 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3 px-4 rounded-xl font-semibold text-sm text-white bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-indigo-500 shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2 mt-2"
+              >
+                {isLoading ? (
+                  <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4" />
+                    <span>Create Admin Account & Sign In</span>
+                  </>
+                )}
+              </button>
+            </form>
           ) : (
             <form onSubmit={handleTeamLogin} className="space-y-6">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                  Select Team Account
+                  Select Database Account
                 </label>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                   {users.map(u => {
                     const isSelected = u.id === selectedUserId;
                     return (
@@ -217,9 +325,11 @@ export const LoginView: React.FC = () => {
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs ${
-                            isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'
-                          }`}>
+                          <div
+                            className={`h-8 w-8 rounded-full flex items-center justify-center font-bold text-xs ${
+                              isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'
+                            }`}
+                          >
                             {u.avatar}
                           </div>
                           <div>
@@ -229,15 +339,17 @@ export const LoginView: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded font-bold border ${
-                            u.role === 'admin'
-                              ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
-                              : u.role === 'manager'
-                              ? 'bg-blue-950/80 text-blue-300 border-blue-800/60'
-                              : u.role === 'engineer'
-                              ? 'bg-amber-950/80 text-amber-300 border-amber-800/60'
-                              : 'bg-slate-800 text-slate-300 border-slate-700'
-                          }`}>
+                          <span
+                            className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded font-bold border ${
+                              u.role === 'admin'
+                                ? 'bg-purple-950/80 text-purple-300 border-purple-800/60'
+                                : u.role === 'manager'
+                                ? 'bg-blue-950/80 text-blue-300 border-blue-800/60'
+                                : u.role === 'engineer'
+                                ? 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                                : 'bg-slate-800 text-slate-300 border-slate-700'
+                            }`}
+                          >
                             {u.role}
                           </span>
                           {isSelected && <UserCheck className="h-4 w-4 text-indigo-400" />}

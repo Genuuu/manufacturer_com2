@@ -46,8 +46,8 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
 
   const isEditing = Boolean(initialEntry);
 
-  const [date, setDate] = useState('2026-11-04');
-  const [manufacturerId, setManufacturerId] = useState('M001');
+  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [manufacturerId, setManufacturerId] = useState(manufacturers[0]?.id || '');
   const [threadSelection, setThreadSelection] = useState<'New Thread' | string>('New Thread');
   const [channel, setChannel] = useState<CommChannel>('Email - Received');
   const [subject, setSubject] = useState('');
@@ -99,8 +99,8 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       setShowAiBox(false);
     } else {
       // New Entry
-      setDate('2026-11-04');
-      const targetM = preselectedManufacturerId || (manufacturers[0] ? manufacturers[0].id : 'M001');
+      setDate(new Date().toISOString().split('T')[0]);
+      const targetM = preselectedManufacturerId || (manufacturers[0] ? manufacturers[0].id : '');
       setManufacturerId(targetM);
 
       if (preselectedThreadId) {
@@ -184,7 +184,13 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         }),
       });
 
-      const result = await response.json();
+      const text = await response.text();
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        throw new Error(text || 'Server returned invalid response.');
+      }
 
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to process email text.');
@@ -565,7 +571,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
               required
               value={subject}
               onChange={e => setSubject(e.target.value)}
-              placeholder="e.g. 5,000-unit RFQ for A7671G-MBXV, FoC sample offer & Technical Docs"
+              placeholder="Enter subject or purpose of this communication"
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
             />
           </div>
@@ -577,7 +583,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
               rows={2}
               value={keyOutcome}
               onChange={e => setKeyOutcome(e.target.value)}
-              placeholder="e.g. Received 5,000-unit pricing: A7671G-MBXV @ $6.72 EXW HK; Lead time 6–8 weeks"
+              placeholder="Summarize the key outcome, quote details, or response..."
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
             />
           </div>
@@ -617,7 +623,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
               type="text"
               value={nextAction}
               onChange={e => setNextAction(e.target.value)}
-              placeholder="e.g. Review 5k unit quotation ($6.72 / $5.42 EXW HK) & confirm FoC samples request"
+              placeholder="Enter next follow-up action..."
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
             />
           </div>
@@ -657,10 +663,10 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
               />
             </div>
 
-            {/* Technical Documents Received (e.g. Datasheets, Spec manuals) */}
+            {/* Technical Documents Received */}
             <div>
               <label className="block text-[11px] text-slate-500 mb-1">
-                Technical Manuals / Specifications Received (e.g. <code>A7671G_SPEC_202508.pdf</code>)
+                Technical Manuals / Specifications Received
               </label>
               <div className="flex gap-2">
                 <input

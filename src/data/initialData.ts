@@ -4,18 +4,7 @@ export const INITIAL_MANUFACTURERS: Manufacturer[] = [];
 
 export const INITIAL_COMMUNICATIONS: CommunicationEntry[] = [];
 
-export const INITIAL_USERS: AppUser[] = [
-  {
-    id: 'usr-admin',
-    name: 'Admin User',
-    email: 'admin@company.com',
-    role: 'admin',
-    department: 'Procurement & Management',
-    avatar: 'AU',
-    isActive: true,
-    lastLogin: 'Just now',
-  },
-];
+export const INITIAL_USERS: AppUser[] = [];
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<UserRoleType, RolePermissions> = {
   admin: {
