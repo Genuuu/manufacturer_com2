@@ -573,7 +573,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
         return {
           success: false,
-          message: 'The current domain is not added to Firebase Authorized Domains. Please use Team Account Sign-In below or add this preview domain in Firebase Console > Authentication > Settings > Authorized Domains.'
+          message: 'The current domain is not added to Firebase Authorized Domains. To sign in with Google, add this domain in Firebase Console > Authentication > Settings > Authorized Domains.'
         };
       }
       return { success: false, message: err.message || 'Google Authentication failed' };

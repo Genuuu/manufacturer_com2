@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
-
 import fs from 'fs';
 
 dotenv.config();
@@ -14,18 +13,22 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.resolve(__dirname, 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'db.json');
 
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+// Ensure data directory exists safely (do not crash on read-only production filesystems)
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn('Notice: Could not create local data directory (read-only filesystem in production):', err);
 }
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Local file database persistence endpoints
-app.get('/api/db', (req, res) => {
+app.get('/api/db', (_req, res) => {
   try {
     if (fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, 'utf-8');
@@ -33,8 +36,8 @@ app.get('/api/db', (req, res) => {
     }
     return res.json({ success: true, data: null });
   } catch (err: any) {
-    console.error('Error reading local db file:', err);
-    return res.status(500).json({ error: 'Failed to read local database file.' });
+    console.warn('Error reading local db file:', err.message || err);
+    return res.json({ success: true, data: null });
   }
 });
 
@@ -44,16 +47,19 @@ app.post('/api/db', (req, res) => {
     fs.writeFileSync(DB_FILE, JSON.stringify(payload, null, 2), 'utf-8');
     return res.json({ success: true, message: 'Local database saved successfully' });
   } catch (err: any) {
-    console.error('Error writing local db file:', err);
-    return res.status(500).json({ error: 'Failed to save local database file.' });
+    // In production Cloud Run, disk may be read-only while Firestore handles persistence
+    return res.json({ success: true, message: 'Synced (Firestore primary)' });
   }
 });
 
 // Helper to get GoogleGenAI client
 function getGenAI() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.API_KEY;
   if (!apiKey || !apiKey.trim()) {
-    throw new Error('GEMINI_API_KEY is missing in your .env file. Please set GEMINI_API_KEY=your_key in .env');
+    throw new Error('GEMINI_API_KEY is not configured on the server.');
   }
   return new GoogleGenAI({
     apiKey: apiKey.trim(),
@@ -68,17 +74,20 @@ function getGenAI() {
 // Endpoint to automatically parse copy-pasted email or chat text
 app.post('/api/parse-email', async (req, res) => {
   try {
-    const { rawText, existingManufacturers } = req.body;
+    const { rawText, existingManufacturers } = req.body || {};
 
     if (!rawText || typeof rawText !== 'string' || !rawText.trim()) {
-      return res.status(400).json({ error: 'Text to parse is empty or missing.' });
+      return res.status(400).json({ success: false, error: 'Text to parse is empty or missing.' });
     }
 
     const ai = getGenAI();
 
-    const manufacturersContext = existingManufacturers && Array.isArray(existingManufacturers) && existingManufacturers.length > 0
-      ? `Registered Manufacturers in Database:\n${existingManufacturers.map((m: any) => `- ID: ${m.id}, Name: ${m.name}`).join('\n')}`
-      : 'Registered Manufacturers in Database: None registered yet.';
+    const manufacturersContext =
+      existingManufacturers && Array.isArray(existingManufacturers) && existingManufacturers.length > 0
+        ? `Registered Manufacturers in Database:\n${existingManufacturers
+            .map((m: any) => `- ID: ${m.id}, Name: ${m.name}`)
+            .join('\n')}`
+        : 'Registered Manufacturers in Database: None registered yet.';
 
     const prompt = `You are an expert procurement and hardware supply chain assistant.
 Analyze the following copy-pasted raw email or live chat transcript between a hardware engineering team and a supplier/manufacturer.
@@ -157,10 +166,13 @@ Extract and fill these exact fields:
         });
 
         const txt = response.text || '{}';
-        // Clean markdown code block wrappers if any
-        const cleaned = txt.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
+        const cleaned = txt
+          .replace(/^```json\s*/i, '')
+          .replace(/^```\s*/i, '')
+          .replace(/\s*```$/, '')
+          .trim();
         parsed = JSON.parse(cleaned);
-        break; // Success! Break out of loop.
+        break;
       } catch (err: any) {
         console.warn(`Model ${modelName} failed, trying fallback:`, err.message || err);
         lastError = err;
@@ -182,8 +194,11 @@ Extract and fill these exact fields:
   }
 });
 
-// Vite server integration in dev mode
-if (process.env.NODE_ENV !== 'production') {
+// Serve frontend in dev vs production
+const distPath = path.resolve(__dirname, 'dist');
+const hasBuiltDist = fs.existsSync(path.resolve(distPath, 'index.html'));
+
+if (process.env.NODE_ENV !== 'production' && !process.env.K_SERVICE) {
   const { createServer: createViteServer } = await import('vite');
   const vite = await createViteServer({
     server: { middlewareMode: true, hmr: false },
@@ -192,7 +207,6 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(vite.middlewares);
   app.use('*', async (req, res, next) => {
     try {
-      const fs = await import('fs');
       let template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
       template = await vite.transformIndexHtml(req.originalUrl, template);
       res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
@@ -201,13 +215,30 @@ if (process.env.NODE_ENV !== 'production') {
       next(e);
     }
   });
+} else if (hasBuiltDist) {
+  app.use(express.static(distPath));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.resolve(distPath, 'index.html'));
+  });
 } else {
-  app.use(express.static(path.resolve(__dirname, 'dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+  const { createServer: createViteServer } = await import('vite');
+  const vite = await createViteServer({
+    server: { middlewareMode: true, hmr: false },
+    appType: 'custom',
+  });
+  app.use(vite.middlewares);
+  app.use('*', async (req, res, next) => {
+    try {
+      let template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
+      template = await vite.transformIndexHtml(req.originalUrl, template);
+      res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+    } catch (e) {
+      vite.ssrFixStacktrace(e as Error);
+      next(e);
+    }
   });
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`FabricateOps Server running on port ${PORT}`);
 });

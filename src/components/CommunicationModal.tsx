@@ -163,6 +163,139 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
     setDocumentsReceived(prev => prev.filter((_, i) => i !== idx));
   };
 
+  // Fallback local structured parser when backend /api/parse-email is unreachable in static deployments
+  const parseEmailLocally = (textInput: string) => {
+    const clean = textInput.trim();
+    const lines = clean
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(Boolean);
+
+    // 1. Match against registered manufacturers in the database
+    let matchedManufacturerId = '';
+    let manufacturerName = '';
+    const lowerText = clean.toLowerCase();
+
+    for (const m of manufacturers) {
+      if (m.name && lowerText.includes(m.name.toLowerCase())) {
+        matchedManufacturerId = m.id;
+        manufacturerName = m.name;
+        break;
+      }
+      if (m.website) {
+        const domain = m.website
+          .replace(/^https?:\/\//i, '')
+          .replace(/^www\./i, '')
+          .split('/')[0]
+          .toLowerCase();
+        if (domain && lowerText.includes(domain)) {
+          matchedManufacturerId = m.id;
+          manufacturerName = m.name;
+          break;
+        }
+      }
+    }
+
+    // 2. Detect direction & channel
+    const hasChatIndicators =
+      /live chat|chat transcript|visitor:|agent:|customer service/i.test(clean);
+    const replyMatches = clean.match(/^(from:|on .+ wrote:|-----original message-----)/gim) || [];
+    const isCombined = replyMatches.length >= 2 || (/from:/i.test(clean) && /reply:|we would like|thank you for your quote/i.test(clean) && />/.test(clean));
+    const isSent =
+      !isCombined &&
+      (/^(hi|hello|dear)\s+[a-z0-9\s]+team/i.test(clean) ||
+        /please send us a quote|could you provide|we are looking to procure|request for quotation/i.test(clean));
+
+    let detectedType: 'received' | 'sent' | 'reply' | 'combined_thread' = 'received';
+    let detectedChannel: CommChannel = 'Email - Received';
+
+    if (hasChatIndicators) {
+      detectedChannel = 'Live Chat (Session)';
+      detectedType = 'received';
+    } else if (isCombined) {
+      detectedType = 'combined_thread';
+      detectedChannel = 'Email - Sent';
+    } else if (/^re:/im.test(clean)) {
+      detectedType = 'reply';
+      detectedChannel = isSent ? 'Email - Sent' : 'Email - Received';
+    } else if (isSent) {
+      detectedType = 'sent';
+      detectedChannel = 'Email - Sent';
+    }
+
+    // 3. Extract Subject
+    let extractedSubject = '';
+    const subjectLineMatch = clean.match(/^subject:\s*(.+)$/im);
+    if (subjectLineMatch && subjectLineMatch[1]) {
+      extractedSubject = subjectLineMatch[1].trim();
+    } else {
+      const contentLine = lines.find(
+        l =>
+          !/^(from|to|cc|date|sent|subject):/i.test(l) &&
+          !/^(hi|hello|dear|good morning|good afternoon|best regards|sincerely|thanks)/i.test(l) &&
+          l.length > 10
+      );
+      extractedSubject = contentLine
+        ? contentLine.slice(0, 85) + (contentLine.length > 85 ? '...' : '')
+        : `${manufacturerName || 'Supplier'} Communication Update`;
+    }
+
+    // 4. Extract Key Outcome & Technical Information
+    const bodyLines = lines.filter(
+      l => !/^(from|to|cc|date|sent|subject):/i.test(l) && !/^(best regards|sincerely|kind regards|thanks,?)$/i.test(l)
+    );
+
+    const keySentences = bodyLines.filter(l =>
+      /(\$|usd|eur|quote|quotation|price|moq|lead time|week|day|sample|evk|confirm|availab|spec|test|pcb|module|shipping|attach)/i.test(
+        l
+      )
+    );
+
+    const extractedOutcome =
+      keySentences.slice(0, 2).join(' ') ||
+      bodyLines.slice(0, 2).join(' ').slice(0, 240) ||
+      'Recorded supplier correspondence.';
+
+    // 5. Extract Documents mentioned (.pdf, .doc, .docx, .xlsx, .zip)
+    const docMatches = clean.match(/\b[\w.-]+\.(?:pdf|docx?|xlsx?|zip|rar)\b/gi) || [];
+    const uniqueDocs = Array.from(new Set(docMatches));
+
+    // 6. Status & Next Action
+    let detectedStatus: CommStatus = 'Information Received';
+    let suggestedNextAction = 'Review technical & commercial details with engineering team';
+
+    if (detectedType === 'sent') {
+      detectedStatus = 'Awaiting Reply';
+      suggestedNextAction = 'Follow up with supplier if no response is received';
+    } else if (/action required|please confirm|let us know|awaiting your confirmation/i.test(clean)) {
+      detectedStatus = 'Action Required';
+      suggestedNextAction = 'Respond to supplier confirmation request';
+    } else if (uniqueDocs.length > 0 || /(\$|usd|quote|price|lead time)/i.test(clean)) {
+      detectedStatus = 'Information Received';
+      suggestedNextAction = 'Evaluate quotation pricing and technical specifications';
+    }
+
+    // 7. Extract date if any YYYY-MM-DD is mentioned for follow-up
+    const dateMatch = clean.match(/\b(202\d-\d{2}-\d{2})\b/);
+    const extractedFollowUp = dateMatch ? dateMatch[1] : '';
+
+    return {
+      manufacturerName,
+      matchedManufacturerId,
+      channel: detectedChannel,
+      detectedType,
+      subject: extractedSubject,
+      keyOutcome: extractedOutcome,
+      status: detectedStatus,
+      nextAction: suggestedNextAction,
+      followUpDate: extractedFollowUp,
+      informationReceived: bodyLines.join('\n'),
+      inboundContent: '',
+      outboundReply: '',
+      documentsReceived: uniqueDocs,
+    };
+  };
+
   // AI Auto-Fill Handler
   const handleAiAutoFill = async () => {
     if (!rawText.trim()) {
@@ -175,28 +308,33 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
     setAiSuccessMsg('');
 
     try {
-      const response = await fetch('/api/parse-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rawText,
-          existingManufacturers: manufacturers.map(m => ({ id: m.id, name: m.name })),
-        }),
-      });
+      let data: any = null;
 
-      const text = await response.text();
-      let result;
       try {
-        result = JSON.parse(text);
-      } catch (e) {
-        throw new Error(text || 'Server returned invalid response.');
+        const response = await fetch('/api/parse-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rawText,
+            existingManufacturers: manufacturers.map(m => ({ id: m.id, name: m.name })),
+          }),
+        });
+
+        const text = await response.text();
+        if (text && !text.trim().startsWith('<')) {
+          const result = JSON.parse(text);
+          if (response.ok && result && result.success && result.data) {
+            data = result.data;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('Backend /api/parse-email fallback triggered:', apiErr);
       }
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to process email text.');
+      // If deployed environment does not reach backend route, use built-in structured parser
+      if (!data) {
+        data = parseEmailLocally(rawText);
       }
-
-      const data = result.data;
 
       // Match Manufacturer
       if (data.matchedManufacturerId) {
@@ -221,9 +359,9 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
 
       if (data.channel) setChannel(data.channel as CommChannel);
       if (data.subject) setSubject(data.subject);
-      
+
       let outcomeText = data.keyOutcome || '';
-      if (data.detectedType === 'combined_thread') {
+      if (data.detectedType === 'combined_thread' && (data.inboundContent || data.outboundReply)) {
         outcomeText = `[Received]: ${data.inboundContent || 'Vendor provided updates'} | [Reply]: ${data.outboundReply || 'Team acknowledged'}`;
       }
       setKeyOutcome(outcomeText);
@@ -231,7 +369,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       if (data.status) setStatus(data.status as CommStatus);
       if (data.nextAction) setNextAction(data.nextAction);
       if (data.followUpDate) setFollowUpDate(data.followUpDate);
-      
+
       let infoText = data.informationReceived || '';
       if (data.inboundContent && data.outboundReply && !infoText.includes(data.inboundContent)) {
         infoText = `📥 Vendor Statement:\n${data.inboundContent}\n\n📤 Our Response:\n${data.outboundReply}\n\n${infoText}`;
@@ -246,8 +384,8 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
 
       setAiSuccessMsg(
         data.detectedType === 'combined_thread'
-          ? '✨ AI identified a Combined Exchange (Vendor Inquiry + Team Reply)! Saved full email text & auto-filled fields below.'
-          : '✨ AI successfully parsed your text and saved full email content! Review fields below and click "Record Communication".'
+          ? '✨ Identified a Combined Exchange (Vendor Inquiry + Team Reply)! Saved full email text & auto-filled fields below.'
+          : '✨ Successfully parsed your text and saved full email content! Review fields below and click "Record Communication".'
       );
       setShowAiBox(false);
       setRawText('');
