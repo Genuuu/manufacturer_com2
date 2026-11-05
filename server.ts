@@ -106,7 +106,7 @@ Extract and fill these exact fields:
 12. outboundReply: If our team sent or replied to the vendor, extract what our team asked or replied.
 13. documentsReceived: List of filenames, datasheets, or PDF manuals mentioned in the text (e.g. ["A7671G_SPEC_202508.pdf"]).`;
 
-    const modelsToTry = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
     let lastError: any = null;
     let parsed: any = null;
 
@@ -156,7 +156,10 @@ Extract and fill these exact fields:
           },
         });
 
-        parsed = JSON.parse(response.text || '{}');
+        const txt = response.text || '{}';
+        // Clean markdown code block wrappers if any
+        const cleaned = txt.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
+        parsed = JSON.parse(cleaned);
         break; // Success! Break out of loop.
       } catch (err: any) {
         console.warn(`Model ${modelName} failed, trying fallback:`, err.message || err);
@@ -172,6 +175,7 @@ Extract and fill these exact fields:
   } catch (error: any) {
     console.error('Error in /api/parse-email:', error);
     return res.status(500).json({
+      success: false,
       error: error.message || 'Failed to process email text with AI.',
       details: error.message || String(error),
     });
