@@ -1,0 +1,6 @@
+{
+  "name": "Manufacturer Communication",
+  "description": "Executive dashboard, communication tracker, and role-based access management for hardware manufacturing and component procurement.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
