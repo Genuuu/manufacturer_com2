@@ -76,7 +76,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiSuccessMsg, setAiSuccessMsg] = useState('');
 
-  const [entryType, setEntryType] = useState<'received' | 'sent' | 'reply'>('received');
+  const [entryType, setEntryType] = useState<'received' | 'sent'>('received');
 
   // Sync state on open/edit
   useEffect(() => {
@@ -87,9 +87,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       setChannel(initialEntry.channel);
       
       const ch = initialEntry.channel.toLowerCase();
-      if (ch.includes('sent') && initialEntry.threadId && initialEntry.threadId !== 'New Thread') {
-        setEntryType('reply');
-      } else if (ch.includes('sent')) {
+      if (ch.includes('sent')) {
         setEntryType('sent');
       } else {
         setEntryType('received');
@@ -114,7 +112,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
 
       if (preselectedThreadId) {
         setThreadSelection(preselectedThreadId);
-        setEntryType('reply');
+        setEntryType('sent');
         setChannel('Email - Sent');
       } else {
         setThreadSelection('New Thread');
@@ -144,17 +142,21 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
   const currentManufacturer = manufacturers.find(m => m.id === manufacturerId);
   const existingThreads = getThreadsForManufacturer(manufacturerId);
 
-  const handleEntryTypeChange = (type: 'received' | 'sent' | 'reply') => {
+  const handleEntryTypeChange = (type: 'received' | 'sent') => {
     setEntryType(type);
     if (type === 'received') {
       setChannel('Email - Received');
     } else if (type === 'sent') {
       setChannel('Email - Sent');
-    } else if (type === 'reply') {
-      setChannel('Email - Sent');
-      if (existingThreads.length > 0 && threadSelection === 'New Thread') {
-        setThreadSelection(existingThreads[0]);
-      }
+    }
+  };
+
+  const handleChannelChange = (newChannel: CommChannel) => {
+    setChannel(newChannel);
+    if (newChannel.toLowerCase().includes('sent')) {
+      setEntryType('sent');
+    } else if (newChannel.toLowerCase().includes('received')) {
+      setEntryType('received');
     }
   };
 
@@ -245,123 +247,136 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
   // Fallback local structured parser when backend /api/parse-email is unreachable in static deployments
   const parseEmailLocally = (textInput: string) => {
     const clean = textInput.trim();
-    const lines = clean
-      .split(/\r?\n/)
-      .map(l => l.trim())
-      .filter(Boolean);
 
-    // 1. Match against registered manufacturers in the database
-    let matchedManufacturerId = '';
-    let manufacturerName = '';
-    const lowerText = clean.toLowerCase();
-
-    for (const m of manufacturers) {
-      if (m.name && lowerText.includes(m.name.toLowerCase())) {
-        matchedManufacturerId = m.id;
-        manufacturerName = m.name;
+    // Strip out older quoted email threads at the bottom ("On ... wrote:", "-----Original Message-----", "> ")
+    const splitMarkers = [
+      /^on\s+.+wrote:\s*$/im,
+      /^-----original message-----/im,
+      /^from:\s+.+\nsent:\s+/im,
+      /^_{5,}/m,
+    ];
+    let primaryMessage = clean;
+    for (const marker of splitMarkers) {
+      const match = primaryMessage.match(marker);
+      if (match && match.index && match.index > 30) {
+        primaryMessage = primaryMessage.slice(0, match.index).trim();
         break;
       }
-      if (m.website) {
-        const domain = m.website
-          .replace(/^https?:\/\//i, '')
-          .replace(/^www\./i, '')
-          .split('/')[0]
-          .toLowerCase();
-        if (domain && lowerText.includes(domain)) {
-          matchedManufacturerId = m.id;
-          manufacturerName = m.name;
-          break;
-        }
-      }
     }
 
-    // 2. Detect direction & channel
-    const hasChatIndicators =
-      /live chat|chat transcript|visitor:|agent:|customer service/i.test(clean);
-    const replyMatches = clean.match(/^(from:|on .+ wrote:|-----original message-----)/gim) || [];
-    const isCombined = replyMatches.length >= 2 || (/from:/i.test(clean) && /reply:|we would like|thank you for your quote/i.test(clean) && />/.test(clean));
-    const isSent =
-      !isCombined &&
-      (/^(hi|hello|dear)\s+[a-z0-9\s]+team/i.test(clean) ||
-        /please send us a quote|could you provide|we are looking to procure|request for quotation/i.test(clean));
+    const lines = primaryMessage
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => Boolean(l) && !l.startsWith('>'));
 
-    let detectedType: 'received' | 'sent' | 'reply' | 'combined_thread' = 'received';
-    let detectedChannel: CommChannel = 'Email - Received';
+    // 1. Respect pre-selected Manufacturer, Direction, and Channel
+    const selectedM = manufacturers.find(m => m.id === manufacturerId);
+    const matchedManufacturerId = selectedM ? selectedM.id : manufacturerId;
+    const manufacturerName = selectedM ? selectedM.name : 'Supplier';
 
-    if (hasChatIndicators) {
-      detectedChannel = 'Live Chat (Session)';
-      detectedType = 'received';
-    } else if (isCombined) {
-      detectedType = 'combined_thread';
-      detectedChannel = 'Email - Sent';
-    } else if (/^re:/im.test(clean)) {
-      detectedType = 'reply';
-      detectedChannel = isSent ? 'Email - Sent' : 'Email - Received';
-    } else if (isSent) {
-      detectedType = 'sent';
-      detectedChannel = 'Email - Sent';
-    }
+    const detectedType: 'received' | 'sent' = entryType;
+    const detectedChannel: CommChannel = channel;
 
-    // 3. Extract Subject / Purpose
-    let extractedSubject = '';
-    const subjectLineMatch = clean.match(/^subject:\s*(.+)$/im);
-    if (subjectLineMatch && subjectLineMatch[1]) {
-      const rawSub = subjectLineMatch[1].trim();
-      if (/^(re|fwd|fw):/i.test(rawSub) || rawSub.length < 8) {
-        extractedSubject = `Discussion / Update regarding ${manufacturerName || 'Supplier'} (${rawSub})`;
-      } else {
-        extractedSubject = rawSub;
-      }
-    } else {
-      const contentLine = lines.find(
-        l =>
-          !/^(from|to|cc|date|sent|subject):/i.test(l) &&
-          !/^(hi|hello|dear|good morning|good afternoon|best regards|sincerely|thanks)/i.test(l) &&
-          l.length > 10
-      );
-      extractedSubject = contentLine
-        ? `Purpose: ${contentLine.slice(0, 75)}`
-        : `Communication & Technical Exchange with ${manufacturerName || 'Supplier'}`;
-    }
+    // Prior thread messages for context
+    const priorThreadMsgs = communications
+      .filter(
+        c =>
+          c.manufacturerId === manufacturerId &&
+          (threadSelection === 'New Thread' ? false : c.threadId === threadSelection)
+      )
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const lastThreadMsg = priorThreadMsgs.length > 0 ? priorThreadMsgs[priorThreadMsgs.length - 1] : null;
 
-    // 4. Extract Key Outcome & Technical Information
+    // 2. Clean body lines (remove headers, greetings, sign-offs)
     const bodyLines = lines.filter(
-      l => !/^(from|to|cc|date|sent|subject):/i.test(l) && !/^(best regards|sincerely|kind regards|thanks,?)$/i.test(l)
+      l =>
+        !/^(from|to|cc|bcc|date|sent|subject):/i.test(l) &&
+        !/^(hi|hello|dear|good morning|good afternoon|good evening)\b/i.test(l) &&
+        !/^(best regards|sincerely|kind regards|warm regards|regards|thanks|thank you|cheers)[,!]?$/i.test(l)
     );
 
-    const keySentences = bodyLines.filter(l =>
-      /(\$|usd|eur|quote|quotation|price|moq|lead time|week|day|sample|evk|confirm|availab|spec|test|pcb|module|shipping|attach)/i.test(
+    // 3. Extract technical & commercial sentences
+    const techSpecLines = bodyLines.filter(l =>
+      /(\$|usd|eur|rmb|cny|quote|quotation|price|pricing|moq|lead time|week|day|sample|evk|confirm|availab|spec|datasheet|gerber|schematic|bom|pcb|module|antenna|ic|chip|shipping|dhl|fedex|exw|fob|ddp|payment|invoice|pi|po|part|v\d|\d+\s*(pcs|units|k|mhz|ghz|v|ma|dbm|mm))/i.test(
         l
       )
     );
 
-    const extractedOutcome =
-      keySentences.slice(0, 2).join(' ') ||
-      bodyLines.slice(0, 2).join(' ').slice(0, 240) ||
-      'Recorded supplier correspondence.';
-
-    // 5. Extract Documents mentioned (.pdf, .doc, .docx, .xlsx, .zip)
-    const docMatches = clean.match(/\b[\w.-]+\.(?:pdf|docx?|xlsx?|zip|rar)\b/gi) || [];
-    const uniqueDocs = Array.from(new Set(docMatches));
-
-    // 6. Status & Next Action
-    let detectedStatus: CommStatus = 'Information Received';
-    let suggestedNextAction = 'Review technical & commercial details with engineering team';
+    // 4. Formulate Subject / Purpose based on content + thread flow (not raw email subject header)
+    let extractedSubject = '';
+    const lowerBody = bodyLines.join(' ').toLowerCase();
 
     if (detectedType === 'sent') {
-      detectedStatus = 'Awaiting Reply';
-      suggestedNextAction = 'Follow up with supplier if no response is received';
-    } else if (/action required|please confirm|let us know|awaiting your confirmation/i.test(clean)) {
-      detectedStatus = 'Action Required';
-      suggestedNextAction = 'Respond to supplier confirmation request';
-    } else if (uniqueDocs.length > 0 || /(\$|usd|quote|price|lead time)/i.test(clean)) {
-      detectedStatus = 'Information Received';
-      suggestedNextAction = 'Evaluate quotation pricing and technical specifications';
+      if (/quote|quotation|price|pricing|cost|moq/i.test(lowerBody)) {
+        extractedSubject = `Requesting quotation, MOQ, and pricing from ${manufacturerName}`;
+      } else if (/sample|evk|evaluation|test/i.test(lowerBody)) {
+        extractedSubject = `Requesting evaluation samples and availability from ${manufacturerName}`;
+      } else if (/gerber|schematic|cad|spec|datasheet|pinout|technical/i.test(lowerBody)) {
+        extractedSubject = `Sharing technical specifications and design files with ${manufacturerName}`;
+      } else if (/confirm|approv|proceed|order|po|payment/i.test(lowerBody)) {
+        extractedSubject = `Confirming order details and next steps with ${manufacturerName}`;
+      } else if (lastThreadMsg) {
+        extractedSubject = `Follow-up response regarding ${lastThreadMsg.subject.replace(/^(Sent Inquiry|Received Update|Purpose):\s*/i, '')}`;
+      } else if (bodyLines[0]) {
+        extractedSubject = `Outbound inquiry: ${bodyLines[0].slice(0, 68)}`;
+      } else {
+        extractedSubject = `Outbound procurement inquiry to ${manufacturerName}`;
+      }
+    } else {
+      if (/quote|quotation|\$|usd|unit price|moq/i.test(lowerBody)) {
+        extractedSubject = `Received quotation, unit pricing, and MOQ from ${manufacturerName}`;
+      } else if (/ship|tracking|dhl|fedex|dispatch|waybill/i.test(lowerBody)) {
+        extractedSubject = `Sample dispatch and shipment tracking update from ${manufacturerName}`;
+      } else if (/datasheet|manual|reference design|schematic|spec/i.test(lowerBody)) {
+        extractedSubject = `Received technical documentation and specifications from ${manufacturerName}`;
+      } else if (/lead time|stock|inventory|schedule|production/i.test(lowerBody)) {
+        extractedSubject = `Lead time and production availability update from ${manufacturerName}`;
+      } else if (lastThreadMsg) {
+        extractedSubject = `Supplier response regarding ${lastThreadMsg.subject.replace(/^(Sent Inquiry|Received Update|Purpose):\s*/i, '')}`;
+      } else if (bodyLines[0]) {
+        extractedSubject = `Supplier update: ${bodyLines[0].slice(0, 68)}`;
+      } else {
+        extractedSubject = `Received technical & commercial update from ${manufacturerName}`;
+      }
     }
 
-    // 7. Extract date if any YYYY-MM-DD is mentioned for follow-up
-    const dateMatch = clean.match(/\b(202\d-\d{2}-\d{2})\b/);
-    const extractedFollowUp = dateMatch ? dateMatch[1] : '';
+    // 5. Formulate Summary (Sent) or Key Outcome (Received)
+    const extractedOutcome =
+      techSpecLines.slice(0, 2).join(' ') ||
+      bodyLines.slice(0, 2).join(' ').slice(0, 260) ||
+      (detectedType === 'sent'
+        ? `Sent email to ${manufacturerName}.`
+        : `Received correspondence from ${manufacturerName}.`);
+
+    // 6. Format clean bulleted Technical Specifications for Received Mail only
+    let formattedInfoReceived = '';
+    if (detectedType === 'received') {
+      const candidateLines = techSpecLines.length > 0 ? techSpecLines : bodyLines.slice(0, 4);
+      formattedInfoReceived = candidateLines
+        .map(l => (l.startsWith('•') || l.startsWith('-') ? l : `• ${l}`))
+        .join('\n');
+    }
+
+    // 7. Extract Documents mentioned (.pdf, .doc, .docx, .xlsx, .csv, .zip, .rar, .step, .stp, .gerber)
+    const docMatches =
+      clean.match(/\b[\w.-]+\.(?:pdf|docx?|xlsx?|csv|zip|rar|step|stp|gbr)\b/gi) || [];
+    const uniqueDocs = Array.from(new Set(docMatches));
+
+    // 8. Determine Status based on pre-entered direction
+    let detectedStatus: CommStatus =
+      detectedType === 'sent' ? 'Awaiting Reply' : 'Information Received';
+
+    if (detectedType === 'received') {
+      if (
+        /action required|please confirm|let us know|awaiting your confirmation|please approve|kindly advise/i.test(
+          primaryMessage
+        )
+      ) {
+        detectedStatus = 'Action Required';
+      } else {
+        detectedStatus = 'Information Received';
+      }
+    }
 
     return {
       manufacturerName,
@@ -373,7 +388,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       status: detectedStatus,
       nextAction: '',
       followUpDate: '',
-      informationReceived: detectedType === 'sent' ? '' : keySentences.join('\n') || bodyLines.slice(0, 3).join('\n'),
+      informationReceived: formattedInfoReceived,
       inboundContent: '',
       outboundReply: '',
       documentsReceived: uniqueDocs,
@@ -396,7 +411,9 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       const mName = selectedManufacturerObj ? selectedManufacturerObj.name : '';
 
       const priorMessages = communications.filter(
-        c => c.manufacturerId === manufacturerId && (threadSelection === 'New Thread' ? false : c.threadId === threadSelection)
+        c =>
+          c.manufacturerId === manufacturerId &&
+          (threadSelection === 'New Thread' ? false : c.threadId === threadSelection)
       );
 
       let data: any = null;
@@ -407,8 +424,22 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             rawText,
-            existingManufacturers: manufacturers.map(m => ({ id: m.id, name: m.name })),
+            existingManufacturers: manufacturers.map(m => ({
+              id: m.id,
+              name: m.name,
+              category: m.productsOfInterest,
+            })),
             manufacturerName: mName,
+            manufacturerDetails: selectedManufacturerObj
+              ? {
+                  id: selectedManufacturerObj.id,
+                  name: selectedManufacturerObj.name,
+                  category: selectedManufacturerObj.productsOfInterest,
+                  contactName: selectedManufacturerObj.contactPortal,
+                  contactEmail: selectedManufacturerObj.website,
+                  notes: selectedManufacturerObj.notes,
+                }
+              : null,
             date,
             threadSelection,
             entryType,
@@ -420,6 +451,8 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
               status: p.status,
               keyOutcome: p.keyOutcome,
               informationReceived: p.informationReceived,
+              documentsReceived: p.documentsReceived,
+              fullEmailText: p.fullEmailText,
             })),
           }),
         });
@@ -440,34 +473,11 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         data = parseEmailLocally(rawText);
       }
 
-      // Match Manufacturer
-      if (data.matchedManufacturerId) {
-        setManufacturerId(data.matchedManufacturerId);
-      } else if (data.manufacturerName) {
-        const match = manufacturers.find(
-          m => m.name.toLowerCase() === data.manufacturerName.toLowerCase()
-        );
-        if (match) setManufacturerId(match.id);
-      }
-
-      // Handle Direction & Detected Type
-      if (data.detectedType === 'received') {
-        handleEntryTypeChange('received');
-      } else if (data.detectedType === 'sent') {
-        handleEntryTypeChange('sent');
-      } else if (data.detectedType === 'reply') {
-        handleEntryTypeChange('reply');
-      } else if (data.detectedType === 'combined_thread') {
-        handleEntryTypeChange('reply');
-      }
-
-      if (data.channel) setChannel(data.channel as CommChannel);
+      // Keep pre-entered Date, Manufacturer, Thread, Channel/Direction, and Sent/Received Mail untouched.
+      // Only fill Subject/Purpose, Summary/Key Outcome, Status, Information Received (for received mail), and Documents.
       if (data.subject) setSubject(data.subject);
 
-      let outcomeText = data.keyOutcome || '';
-      if (data.detectedType === 'combined_thread' && (data.inboundContent || data.outboundReply)) {
-        outcomeText = `[Received]: ${data.inboundContent || 'Vendor provided updates'} | [Reply]: ${data.outboundReply || 'Team acknowledged'}`;
-      }
+      const outcomeText = data.keyOutcome || '';
       setKeyOutcome(outcomeText);
 
       if (data.status) setStatus(data.status as CommStatus);
@@ -479,11 +489,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       if (entryType === 'sent') {
         setInformationReceived('');
       } else {
-        let infoText = data.informationReceived || '';
-        if (data.inboundContent && data.outboundReply && !infoText.includes(data.inboundContent)) {
-          infoText = `📥 Vendor Statement:\n${data.inboundContent}\n\n📤 Our Response:\n${data.outboundReply}\n\n${infoText}`;
-        }
-        setInformationReceived(infoText);
+        setInformationReceived(data.informationReceived || '');
       }
 
       setFullEmailText(rawText);
@@ -493,9 +499,9 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       }
 
       setAiSuccessMsg(
-        data.detectedType === 'combined_thread'
-          ? '✨ Identified a Combined Exchange (Vendor Inquiry + Team Reply)! Saved full email text & auto-filled fields below.'
-          : '✨ Successfully parsed your text and saved full email content! Review fields below and click "Record Communication".'
+        `✨ Parsed according to your pre-entered ${
+          entryType === 'sent' ? 'Sent Email' : 'Received Mail'
+        } & thread context! Review the fields below and click "Record Communication".`
       );
       setShowAiBox(false);
       setRawText('');
@@ -539,7 +545,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         fullEmailText: fullEmailText.trim() || undefined,
         documentsReceived,
         attachments,
-        informationReceived: informationReceived.trim() || undefined,
+        informationReceived: entryType === 'sent' ? undefined : informationReceived.trim() || undefined,
       });
 
       if (!res.success) {
@@ -563,7 +569,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         fullEmailText: fullEmailText.trim() || undefined,
         documentsReceived,
         attachments,
-        informationReceived: informationReceived.trim() || undefined,
+        informationReceived: entryType === 'sent' ? undefined : informationReceived.trim() || undefined,
       });
 
       if (!res.success) {
@@ -607,7 +613,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
           <div className="p-3 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
             <div className="flex items-center gap-1.5 font-bold text-indigo-950">
               <Wand2 className="h-4 w-4 text-indigo-600 animate-pulse" />
-              <span>Thread-Aware AI Email Auto-Fill</span>
+              <span>Pre-Enter Details & AI Auto-Fill</span>
             </div>
 
             <button
@@ -616,33 +622,35 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
               className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              <span>{showAiBox ? 'Hide AI Auto-Fill Box' : '✨ Paste Email (With Thread Context)'}</span>
+              <span>{showAiBox ? 'Hide AI Auto-Fill Box' : '✨ Paste Email (Uses Pre-Entered Details)'}</span>
             </button>
           </div>
         )}
 
         {/* AI Paste Box Drawer */}
         {showAiBox && !isEditing && (
-          <div className="p-4 bg-indigo-950 text-white border-b border-indigo-900 space-y-3 shrink-0 overflow-y-auto max-h-[220px] animate-in fade-in slide-in-from-top-2">
-            <div className="flex items-center justify-between">
+          <div className="p-4 bg-indigo-950 text-white border-b border-indigo-900 space-y-3 shrink-0 overflow-y-auto max-h-[240px] animate-in fade-in slide-in-from-top-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-semibold text-indigo-200 flex items-center gap-1.5">
                 <Wand2 className="h-3.5 w-3.5 text-indigo-400" />
-                <span>Tip: Fill Manufacturer, Date & Thread below first, then paste the email:</span>
+                <span>Step 1: Pre-enter Date, Manufacturer, Thread, Channel & Sent/Received below. Step 2: Paste email:</span>
               </span>
-              <span className="text-[10px] font-mono text-indigo-300">Gemini Thread History Enabled</span>
+              <span className="text-[10px] font-mono bg-indigo-900/90 border border-indigo-700 px-2 py-0.5 rounded text-indigo-200">
+                {entryType === 'sent' ? '📤 Sent Email' : '📩 Received Mail'} • {currentManufacturer?.name || manufacturerId} • {threadSelection}
+              </span>
             </div>
 
             <textarea
               rows={4}
               value={rawText}
               onChange={e => setRawText(e.target.value)}
-              placeholder="Paste email text here..."
+              placeholder={`Paste ${entryType === 'sent' ? 'sent email' : 'received mail'} text here...`}
               className="w-full text-xs font-sans p-2.5 bg-indigo-900/80 border border-indigo-700 rounded-lg text-white placeholder:text-indigo-300/60 focus:outline-hidden focus:ring-2 focus:ring-indigo-400 leading-relaxed"
             />
 
             <div className="flex items-center justify-between pt-1">
               <span className="text-[10px] text-indigo-300">
-                Gemini reviews prior thread messages for precise flow, status, and technical extraction.
+                Parses strictly according to your pre-entered Date, Manufacturer, Thread, Channel & {entryType === 'sent' ? 'Sent Email' : 'Received Mail'} selection.
               </span>
 
               <button
@@ -654,7 +662,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
                 {isAiLoading ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin text-slate-950" />
-                    <span>Extracting Fields...</span>
+                    <span>Analyzing Thread & Mail...</span>
                   </>
                 ) : (
                   <>
@@ -686,130 +694,116 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs flex-1 min-h-0 overflow-y-auto">
           
-          {/* Message Direction / Entry Type Selector */}
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+          {/* Pre-Entered Details Section: Sent/Received, Date, Manufacturer, Thread, Channel */}
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3.5">
             <div className="flex items-center justify-between">
               <label className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                <span>Message Direction & Type</span>
+                <span>1. Pre-Enter Mail Context & Direction</span>
               </label>
-              <span className="text-[11px] text-slate-500">Select entry purpose</span>
+              <span className="text-[11px] text-slate-500">Select these before AI parsing</span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            {/* Sent Email vs Received Mail (2 options) */}
+            <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
                 onClick={() => handleEntryTypeChange('received')}
-                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 ${
+                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
                   entryType === 'received'
                     ? 'bg-blue-50 border-blue-500 text-blue-900 ring-2 ring-blue-500/20 font-bold'
                     : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <div className="flex items-center gap-1 text-xs font-bold">
-                  <span>📩 Received Email</span>
+                <div className="flex items-center gap-1.5 text-xs font-bold">
+                  <span>📩 Received Mail</span>
                 </div>
-                <span className="text-[10px] text-slate-500 font-normal leading-tight">Inbound from vendor</span>
+                <span className="text-[10px] text-slate-500 font-normal leading-tight">Inbound message from supplier</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleEntryTypeChange('sent')}
-                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 ${
+                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
                   entryType === 'sent'
                     ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-500/20 font-bold'
                     : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <div className="flex items-center gap-1 text-xs font-bold">
+                <div className="flex items-center gap-1.5 text-xs font-bold">
                   <span>📤 Sent Email</span>
                 </div>
-                <span className="text-[10px] text-slate-500 font-normal leading-tight">New outbound proposal</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleEntryTypeChange('reply')}
-                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 ${
-                  entryType === 'reply'
-                    ? 'bg-purple-50 border-purple-500 text-purple-900 ring-2 ring-purple-500/20 font-bold'
-                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <div className="flex items-center gap-1 text-xs font-bold">
-                  <span>↩️ Reply to Thread</span>
-                </div>
-                <span className="text-[10px] text-slate-500 font-normal leading-tight">Append to thread</span>
+                <span className="text-[10px] text-slate-500 font-normal leading-tight">Outbound message to supplier</span>
               </button>
             </div>
-          </div>
-          
-          {/* Row 1: Date & Supplier */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Date</label>
-              <input
-                type="date"
-                required
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-mono"
-              />
+
+            {/* Row 1: Date & Manufacturer */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Date</label>
+                <input
+                  type="date"
+                  required
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  className="w-full p-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Manufacturer</label>
+                <select
+                  value={manufacturerId}
+                  onChange={e => {
+                    setManufacturerId(e.target.value);
+                    setThreadSelection('New Thread');
+                  }}
+                  className="w-full p-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-medium"
+                >
+                  {manufacturers.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.id} - {m.name} ({m.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Manufacturer</label>
-              <select
-                value={manufacturerId}
-                onChange={e => {
-                  setManufacturerId(e.target.value);
-                  setThreadSelection('New Thread');
-                }}
-                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-medium"
-              >
-                {manufacturers.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.id} - {m.name} ({m.status})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+            {/* Row 2: Thread & Channel / Direction */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Thread
+                </label>
+                <select
+                  value={threadSelection}
+                  onChange={e => setThreadSelection(e.target.value)}
+                  className="w-full p-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-mono"
+                >
+                  <option value="New Thread">✨ Start New Thread (Auto ID: {getNextThreadId(manufacturerId)})</option>
+                  {existingThreads.map(tid => (
+                    <option key={tid} value={tid}>
+                      Existing Thread: {tid}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Row 2: Thread & Channel */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">
-                Thread Selection
-              </label>
-              <select
-                value={threadSelection}
-                onChange={e => setThreadSelection(e.target.value)}
-                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-mono"
-              >
-                <option value="New Thread">✨ Start New Thread (Auto ID: {getNextThreadId(manufacturerId)})</option>
-                {existingThreads.map(tid => (
-                  <option key={tid} value={tid}>
-                    Append to Existing: {tid}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Channel / Direction</label>
-              <select
-                value={channel}
-                onChange={e => setChannel(e.target.value as CommChannel)}
-                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-medium"
-              >
-                <option value="Email - Received">Email - Received</option>
-                <option value="Email - Sent">Email - Sent</option>
-                <option value="Live Chat (Session)">Live Chat (Session)</option>
-                <option value="Website">Website Form / Inquiry</option>
-                <option value="Phone Call">Phone Call</option>
-                <option value="Video Meeting">Video Meeting</option>
-                <option value="Portal / Ticket">Portal / Ticket</option>
-              </select>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Channel / Direction</label>
+                <select
+                  value={channel}
+                  onChange={e => handleChannelChange(e.target.value as CommChannel)}
+                  className="w-full p-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-medium"
+                >
+                  <option value="Email - Received">Email - Received</option>
+                  <option value="Email - Sent">Email - Sent</option>
+                  <option value="Live Chat (Session)">Live Chat (Session)</option>
+                  <option value="Website">Website Form / Inquiry</option>
+                  <option value="Phone Call">Phone Call</option>
+                  <option value="Video Meeting">Video Meeting</option>
+                  <option value="Portal / Ticket">Portal / Ticket</option>
+                </select>
+              </div>
             </div>
           </div>
 
