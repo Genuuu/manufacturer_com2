@@ -4,6 +4,9 @@ import {
   FileText,
   Download,
   CheckCircle2,
+  ExternalLink,
+  Image as ImageIcon,
+  Paperclip,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -27,10 +30,36 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const matchedComm = communications.find(
     c =>
       c.threadDoc === filename ||
-      (c.documentsReceived && c.documentsReceived.includes(filename))
+      (c.documentsReceived && c.documentsReceived.includes(filename)) ||
+      (c.attachments && c.attachments.some(a => a.name === filename || a.id === filename))
   );
 
-  const handleDownloadText = () => {
+  const matchedAttachment = matchedComm?.attachments?.find(
+    a => a.name === filename || a.id === filename
+  );
+
+  const isImage = Boolean(
+    matchedAttachment?.type?.startsWith('image/') ||
+      filename.match(/\.(png|jpe?g|webp|gif|svg)$/i)
+  );
+
+  const isPdf = Boolean(
+    matchedAttachment?.type?.includes('pdf') || filename.toLowerCase().endsWith('.pdf')
+  );
+
+  const handleDownload = () => {
+    // If we have the uploaded file dataUrl, download the actual binary file directly
+    if (matchedAttachment?.dataUrl) {
+      const link = document.createElement('a');
+      link.href = matchedAttachment.dataUrl;
+      link.download = matchedAttachment.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
+    }
+
+    // Fallback: Generate structured text export
     const contentLines = [
       `Document Reference: ${filename}`,
       `Title: ${title}`,
@@ -60,28 +89,36 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   return (
     <div className="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 overflow-hidden">
       <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-300 overflow-hidden my-auto animate-in fade-in zoom-in-95 flex flex-col max-h-[88vh] mb-14 sm:mb-0">
         {/* Top Bar */}
         <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 bg-indigo-600 rounded-lg">
-              <FileText className="h-4 w-4 text-white" />
+            <div className={`p-1.5 rounded-lg ${isPdf ? 'bg-rose-600' : isImage ? 'bg-amber-600' : 'bg-indigo-600'}`}>
+              {isImage ? <ImageIcon className="h-4 w-4 text-white" /> : <FileText className="h-4 w-4 text-white" />}
             </div>
             <div>
               <h3 className="font-mono text-xs font-bold truncate max-w-md">{filename}</h3>
-              <p className="text-[10px] text-slate-400">{title} · Database Document Record</p>
+              <p className="text-[10px] text-slate-400">
+                {title} · {matchedAttachment ? `Uploaded File (${formatFileSize(matchedAttachment.size)})` : 'Document Record'}
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleDownloadText}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-white transition-colors text-xs flex items-center gap-1 px-2.5 cursor-pointer"
+              onClick={handleDownload}
+              className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-white transition-colors text-xs flex items-center gap-1.5 px-3 cursor-pointer shadow-xs"
             >
               <Download className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Download</span>
+              <span>{matchedAttachment?.dataUrl ? 'Download File' : 'Download Summary'}</span>
             </button>
             <button
               onClick={onClose}
@@ -98,17 +135,59 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             {/* Header Document Banner */}
             <div className="border-b border-slate-200 pb-4 flex items-center justify-between">
               <div>
-                <div className="font-bold text-base text-slate-950">
+                <div className="font-bold text-base text-slate-900">
                   {matchedComm ? matchedComm.manufacturerName : title}
                 </div>
                 <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                  Reference File: {filename} {matchedComm ? `· Thread ${matchedComm.threadId} · ${matchedComm.date}` : ''}
+                  Attachment: {filename} {matchedComm ? `· Thread ${matchedComm.threadId} · ${matchedComm.date}` : ''}
                 </div>
               </div>
-              <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 font-mono">
-                DOC
+              <div className="h-8 px-2.5 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-slate-700 font-mono text-[11px]">
+                {matchedAttachment ? formatFileSize(matchedAttachment.size) : 'ATTACHMENT'}
               </div>
             </div>
+
+            {/* If uploaded image, display preview */}
+            {isImage && matchedAttachment?.dataUrl && (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Image Attachment Preview:
+                </span>
+                <div className="flex justify-center bg-white p-2 rounded-lg border border-slate-100">
+                  <img
+                    src={matchedAttachment.dataUrl}
+                    alt={filename}
+                    className="max-h-80 object-contain rounded"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* If uploaded PDF, display direct action card */}
+            {isPdf && matchedAttachment?.dataUrl && (
+              <div className="p-4 bg-rose-50/70 border border-rose-200 rounded-xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-xs font-mono">{filename}</h4>
+                    <p className="text-[11px] text-slate-600">
+                      PDF Document ({formatFileSize(matchedAttachment.size)})
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Download PDF</span>
+                </button>
+              </div>
+            )}
 
             {matchedComm ? (
               <div className="space-y-4">

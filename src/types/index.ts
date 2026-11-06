@@ -28,6 +28,15 @@ export type CommStatus =
   | 'Pending Review'
   | 'Action Required';
 
+export interface FileAttachment {
+  id: string;
+  name: string;
+  size: number; // in bytes
+  type: string; // MIME type or extension
+  dataUrl?: string; // base64 / data URL for viewing & downloading
+  uploadedAt: string;
+}
+
 export interface CommunicationEntry {
   id: string; // internal UUID / string
   date: string; // YYYY-MM-DD
@@ -44,6 +53,7 @@ export interface CommunicationEntry {
   threadDoc?: string; // legacy attachment filename if any
   fullEmailText?: string; // Full raw pasted email content
   documentsReceived?: string[]; // array of filenames, e.g. ["A76XX_Series_AT_Command_Manual_V2.02.pdf"]
+  attachments?: FileAttachment[]; // uploaded file attachments with metadata & dataUrl
   informationReceived?: string;
   entryKey?: string; // "M001|1"
   createdBy?: string;

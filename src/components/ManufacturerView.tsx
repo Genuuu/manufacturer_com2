@@ -15,6 +15,7 @@ import {
   Filter,
   CheckCircle2,
   Clock,
+  Paperclip,
 } from 'lucide-react';
 
 interface ManufacturerViewProps {
@@ -396,22 +397,33 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
                       </div>
                     )}
 
-                    {(comm.threadDoc || (comm.documentsReceived && comm.documentsReceived.length > 0)) && (
+                    {(comm.threadDoc || (comm.documentsReceived && comm.documentsReceived.length > 0) || (comm.attachments && comm.attachments.length > 0)) && (
                       <div className="flex flex-wrap gap-1.5 pt-1">
-                        {comm.threadDoc && (
+                        {comm.attachments?.map(att => (
+                          <button
+                            key={att.id}
+                            onClick={() => onPreviewDoc(att.name, `Attachment - ${att.name}`)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 border border-indigo-200 rounded text-[10px] font-mono text-indigo-700 hover:bg-indigo-100 cursor-pointer shadow-2xs"
+                            title="Preview or download attachment"
+                          >
+                            <Paperclip className="h-3 w-3 text-indigo-600" />
+                            <span className="max-w-[140px] truncate">{att.name}</span>
+                          </button>
+                        ))}
+                        {comm.threadDoc && !comm.attachments?.some(a => a.name === comm.threadDoc) && (
                           <button
                             onClick={() => onPreviewDoc(comm.threadDoc!, `Chat Document - ${comm.threadDoc}`)}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-indigo-600 hover:underline"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-slate-200 rounded text-[10px] font-mono text-indigo-600 hover:underline cursor-pointer"
                           >
                             <FileText className="h-3 w-3" />
                             <span>{comm.threadDoc}</span>
                           </button>
                         )}
-                        {comm.documentsReceived?.map((doc, idx) => (
+                        {comm.documentsReceived?.filter(doc => !comm.attachments?.some(a => a.name === doc)).map((doc, idx) => (
                           <button
                             key={idx}
                             onClick={() => onPreviewDoc(doc, `Specification - ${doc}`)}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded text-[10px] font-mono text-emerald-800 hover:underline"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded text-[10px] font-mono text-emerald-800 hover:underline cursor-pointer"
                           >
                             <FileText className="h-3 w-3" />
                             <span>{doc}</span>

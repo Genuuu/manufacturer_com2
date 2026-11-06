@@ -74,7 +74,7 @@ function getGenAI() {
 // Endpoint to automatically parse copy-pasted email or chat text
 app.post('/api/parse-email', async (req, res) => {
   try {
-    const { rawText, existingManufacturers } = req.body || {};
+    const { rawText, existingManufacturers, manufacturerName, date, threadSelection, priorMessages, entryType, channel } = req.body || {};
 
     if (!rawText || typeof rawText !== 'string' || !rawText.trim()) {
       return res.status(400).json({ success: false, error: 'Text to parse is empty or missing.' });
@@ -89,13 +89,33 @@ app.post('/api/parse-email', async (req, res) => {
             .join('\n')}`
         : 'Registered Manufacturers in Database: None registered yet.';
 
+    const threadHistoryContext =
+      priorMessages && Array.isArray(priorMessages) && priorMessages.length > 0
+        ? `Existing Thread History for Thread ID "${threadSelection}" (Manufacturer: ${manufacturerName || 'Selected'}, Date: ${date}):\n${priorMessages
+            .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+            .map((m: any) => `[Date: ${m.date}, Channel: ${m.channel}, Subject: ${m.subject}, Status: ${m.status}]\nKey Outcome / Details:\n${m.keyOutcome}\nInformation Received:\n${m.informationReceived || '(None)'}\n---`)
+            .join('\n')}`
+        : `Existing Thread History: None (New Thread or no prior messages in this thread).`;
+
+    const userDirectionContext = `User Pre-Selected Metadata & Direction:
+- Manufacturer: ${manufacturerName || 'Selected Manufacturer'}
+- Interaction Date: ${date}
+- Thread ID: ${threadSelection}
+- Pre-Selected Direction/Type: ${entryType === 'received' ? 'Received (Inbound from Vendor)' : entryType === 'sent' ? 'Sent (Outbound from Team)' : 'Reply to Thread'}
+- Pre-Selected Channel: ${channel || 'Email - Received'}
+
+IMPORTANT: Respect the user's pre-selected direction (${entryType}) and channel (${channel}) when extracting fields.`;
+
     const prompt = `You are an expert procurement and hardware supply chain assistant.
-Analyze the following copy-pasted raw email or live chat transcript between a hardware engineering team and a supplier/manufacturer.
-The text might be a received email from the vendor, a sent email to the vendor, a reply to a thread, or a combination of both a received email and our reply.
+Analyze the following newly copy-pasted raw email or live chat transcript between a hardware engineering team and a supplier/manufacturer.
+
+${userDirectionContext}
 
 ${manufacturersContext}
 
-Text to analyze:
+${threadHistoryContext}
+
+New Raw Email/Chat Text to Analyze:
 """
 ${rawText}
 """
@@ -103,14 +123,14 @@ ${rawText}
 Extract and fill these exact fields:
 1. manufacturerName: Name of the manufacturer/vendor.
 2. matchedManufacturerId: Matched ID from the registered manufacturers list if it matches (e.g. M001, M002), or empty string if not found.
-3. channel: One of: "Email - Received", "Email - Sent", "Thread Reply (Sent)", "Live Chat (Session)", "Website", "Phone Call", "Video Meeting", "Portal / Ticket".
-4. detectedType: One of: "received" (vendor wrote to us), "sent" (we wrote to vendor), "reply" (reply to existing thread), "combined_thread" (text contains both vendor message and our reply).
+3. channel: Must align with the user's pre-selected channel ("${channel || 'Email - Received'}") or as appropriate.
+4. detectedType: Must align with the user's pre-selected direction ("${entryType || 'received'}").
 5. subject: Concise summary title for this interaction (under 12 words).
-6. keyOutcome: Core outcome or response summary (1-2 clear sentences summarizing what was agreed, quoted, or answered).
+6. keyOutcome: Core outcome or response summary (1-2 clear sentences summarizing what was agreed, quoted, or answered in the context of the thread).
 7. status: One of: "Completed", "Awaiting Reply", "Information Received", "Pending Review", "Action Required".
-8. nextAction: Suggested follow-up step or next action for the engineering/procurement team.
+8. nextAction: Suggested follow-up step or next action for the engineering/procurement team based on the thread flow.
 9. followUpDate: Suggested follow-up date in YYYY-MM-DD format if mentioned or implied (or empty string if none).
-10. informationReceived: Detailed technical notes, quotation prices (e.g. unit costs, EXW pricing, MOQ, lead times), EVK/samples, part numbers, or technical specs mentioned.
+10. informationReceived: Detailed technical notes, quotation prices (e.g. unit costs, EXW pricing, MOQ, lead times), EVK/samples, part numbers, or technical specs mentioned in this new message or thread context.
 11. inboundContent: If vendor sent text, extract what the vendor stated/quoted.
 12. outboundReply: If our team sent or replied to the vendor, extract what our team asked or replied.
 13. documentsReceived: List of filenames, datasheets, or PDF manuals mentioned in the text.`;

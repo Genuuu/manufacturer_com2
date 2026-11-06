@@ -22,6 +22,7 @@ import {
   Plus,
   ArrowRight,
   Send,
+  Paperclip,
 } from 'lucide-react';
 import { ThreadConversationModal } from './ThreadConversationModal';
 import { SummaryMetricsPanel } from './SummaryMetricsPanel';
@@ -672,17 +673,29 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
                                     </div>
                                   )}
 
-                                  {/* Attached Files */}
-                                  {comm.documentsReceived && comm.documentsReceived.length > 0 && (
+                                  {/* Attached Files & Attachments */}
+                                  {((comm.documentsReceived && comm.documentsReceived.length > 0) || (comm.attachments && comm.attachments.length > 0)) && (
                                     <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-2 text-xs">
-                                      {comm.documentsReceived.map((doc, dIdx) => (
+                                      {comm.attachments?.map(att => (
+                                        <button
+                                          key={att.id}
+                                          onClick={() => onPreviewDoc(att.name, `Attachment - ${att.name}`)}
+                                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg font-mono text-[11px] text-indigo-800 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                                          title="Preview or download attachment"
+                                        >
+                                          <Paperclip className="h-3.5 w-3.5 text-indigo-600" />
+                                          <span className="max-w-[200px] truncate">{att.name}</span>
+                                          <Eye className="h-3 w-3 text-indigo-600 ml-1" />
+                                        </button>
+                                      ))}
+                                      {comm.documentsReceived?.filter(doc => !comm.attachments?.some(a => a.name === doc)).map((doc, dIdx) => (
                                         <button
                                           key={dIdx}
                                           onClick={() => onPreviewDoc(doc, `Specification - ${doc}`)}
-                                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg font-mono text-[11px] text-emerald-800 flex items-center gap-1.5 transition-colors"
+                                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg font-mono text-[11px] text-emerald-800 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                                         >
                                           <FileText className="h-3.5 w-3.5 text-emerald-600" />
-                                          <span>{doc}</span>
+                                          <span className="max-w-[200px] truncate">{doc}</span>
                                           <Eye className="h-3 w-3 text-emerald-600 ml-1" />
                                         </button>
                                       ))}
@@ -767,7 +780,10 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
                 ) : (
                   filteredComms.map(comm => {
                     const isExpanded = expandedRowId === comm.id;
-                    const hasDocs = comm.threadDoc || (comm.documentsReceived && comm.documentsReceived.length > 0);
+                    const hasDocs =
+                      comm.threadDoc ||
+                      (comm.documentsReceived && comm.documentsReceived.length > 0) ||
+                      (comm.attachments && comm.attachments.length > 0);
 
                     return (
                       <React.Fragment key={comm.id}>
@@ -900,11 +916,24 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
 
                                 {hasDocs && (
                                   <div>
-                                    <span className="font-bold text-slate-700 text-[11px] uppercase tracking-wider block mb-1.5">
-                                      Attached Files:
+                                    <span className="font-bold text-slate-700 text-[11px] uppercase tracking-wider block mb-1.5 flex items-center gap-1">
+                                      <Paperclip className="h-3 w-3 text-indigo-500" />
+                                      <span>Attached Files & Documents:</span>
                                     </span>
                                     <div className="flex flex-wrap gap-2">
-                                      {comm.threadDoc && (
+                                      {comm.attachments?.map(att => (
+                                        <button
+                                          key={att.id}
+                                          onClick={() => onPreviewDoc(att.name, `Attachment - ${att.name}`)}
+                                          className="px-2.5 py-1 bg-indigo-50 border border-indigo-200 rounded-lg font-mono text-[11px] text-indigo-800 flex items-center gap-1.5 hover:bg-indigo-100 cursor-pointer shadow-2xs"
+                                          title="Preview or download attachment"
+                                        >
+                                          <Paperclip className="h-3.5 w-3.5 text-indigo-600" />
+                                          <span className="max-w-[200px] truncate">{att.name}</span>
+                                          <Eye className="h-3 w-3 text-indigo-500 ml-1" />
+                                        </button>
+                                      ))}
+                                      {comm.threadDoc && !comm.attachments?.some(a => a.name === comm.threadDoc) && (
                                         <button
                                           onClick={() => onPreviewDoc(comm.threadDoc!, `Transcript - ${comm.threadDoc}`)}
                                           className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg font-mono text-[11px] text-indigo-700 flex items-center gap-1.5"
@@ -913,7 +942,7 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
                                           <span>{comm.threadDoc}</span>
                                         </button>
                                       )}
-                                      {comm.documentsReceived?.map((doc, idx) => (
+                                      {comm.documentsReceived?.filter(doc => !comm.attachments?.some(a => a.name === doc)).map((doc, idx) => (
                                         <button
                                           key={idx}
                                           onClick={() => onPreviewDoc(doc, `Specification - ${doc}`)}

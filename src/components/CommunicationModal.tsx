@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { CommunicationEntry, CommChannel, CommStatus } from '../types';
+import { CommunicationEntry, CommChannel, CommStatus, FileAttachment } from '../types';
 import {
   X,
   Plus,
@@ -15,6 +15,11 @@ import {
   Wand2,
   Loader2,
   CheckCircle2,
+  Paperclip,
+  Upload,
+  Download,
+  Image as ImageIcon,
+  FileCheck,
 } from 'lucide-react';
 
 interface CommunicationModalProps {
@@ -57,10 +62,13 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
   const [followUpDate, setFollowUpDate] = useState('');
   const [threadDoc, setThreadDoc] = useState('');
   const [documentsReceived, setDocumentsReceived] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [newDocName, setNewDocName] = useState('');
   const [informationReceived, setInformationReceived] = useState('');
   const [fullEmailText, setFullEmailText] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // AI Paste State
   const [showAiBox, setShowAiBox] = useState(false);
@@ -95,6 +103,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       setThreadDoc(initialEntry.threadDoc || '');
       setFullEmailText(initialEntry.fullEmailText || '');
       setDocumentsReceived(initialEntry.documentsReceived || []);
+      setAttachments(initialEntry.attachments || []);
       setInformationReceived(initialEntry.informationReceived || '');
       setShowAiBox(false);
     } else {
@@ -121,6 +130,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       setThreadDoc('');
       setFullEmailText('');
       setDocumentsReceived([]);
+      setAttachments([]);
       setInformationReceived('');
       setShowAiBox(startWithAiOpen);
     }
@@ -148,19 +158,88 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
     }
   };
 
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleFilesSelected = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const list = Array.from(files);
+    const newDocNames: string[] = [];
+
+    list.forEach(file => {
+      const id = `att-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      newDocNames.push(file.name);
+
+      const reader = new FileReader();
+      if (file.size <= 3 * 1024 * 1024) {
+        reader.onload = e => {
+          const dataUrl = e.target?.result as string;
+          setAttachments(prev => [
+            ...prev.filter(a => a.name !== file.name),
+            {
+              id,
+              name: file.name,
+              size: file.size,
+              type: file.type || 'application/octet-stream',
+              dataUrl,
+              uploadedAt: new Date().toISOString(),
+            },
+          ]);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setAttachments(prev => [
+          ...prev.filter(a => a.name !== file.name),
+          {
+            id,
+            name: file.name,
+            size: file.size,
+            type: file.type || 'application/octet-stream',
+            uploadedAt: new Date().toISOString(),
+          },
+        ]);
+      }
+    });
+
+    if (newDocNames.length > 0) {
+      setDocumentsReceived(prev => Array.from(new Set([...prev, ...newDocNames])));
+    }
+  };
+
+  const handleRemoveAttachment = (attId: string, attName: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== attId));
+    setDocumentsReceived(prev => prev.filter(d => d !== attName));
+  };
+
+  const handleDownloadAttachmentFile = (att: FileAttachment) => {
+    if (att.dataUrl) {
+      const link = document.createElement('a');
+      link.href = att.dataUrl;
+      link.download = att.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   const handleAddDocument = () => {
     if (newDocName.trim()) {
       let finalName = newDocName.trim();
       if (!finalName.toLowerCase().endsWith('.pdf') && !finalName.toLowerCase().endsWith('.doc')) {
         finalName += '.pdf';
       }
-      setDocumentsReceived(prev => [...prev, finalName]);
+      setDocumentsReceived(prev => Array.from(new Set([...prev, finalName])));
       setNewDocName('');
     }
   };
 
   const handleRemoveDocument = (idx: number) => {
+    const docName = documentsReceived[idx];
     setDocumentsReceived(prev => prev.filter((_, i) => i !== idx));
+    setAttachments(prev => prev.filter(a => a.name !== docName));
   };
 
   // Fallback local structured parser when backend /api/parse-email is unreachable in static deployments
@@ -308,6 +387,13 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
     setAiSuccessMsg('');
 
     try {
+      const selectedManufacturerObj = manufacturers.find(m => m.id === manufacturerId);
+      const mName = selectedManufacturerObj ? selectedManufacturerObj.name : '';
+
+      const priorMessages = communications.filter(
+        c => c.manufacturerId === manufacturerId && (threadSelection === 'New Thread' ? false : c.threadId === threadSelection)
+      );
+
       let data: any = null;
 
       try {
@@ -317,6 +403,19 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
           body: JSON.stringify({
             rawText,
             existingManufacturers: manufacturers.map(m => ({ id: m.id, name: m.name })),
+            manufacturerName: mName,
+            date,
+            threadSelection,
+            entryType,
+            channel,
+            priorMessages: priorMessages.map(p => ({
+              date: p.date,
+              channel: p.channel,
+              subject: p.subject,
+              status: p.status,
+              keyOutcome: p.keyOutcome,
+              informationReceived: p.informationReceived,
+            })),
           }),
         });
 
@@ -428,6 +527,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         threadDoc: threadDoc.trim() || undefined,
         fullEmailText: fullEmailText.trim() || undefined,
         documentsReceived,
+        attachments,
         informationReceived: informationReceived.trim() || undefined,
       });
 
@@ -451,6 +551,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         threadDoc: threadDoc.trim() || undefined,
         fullEmailText: fullEmailText.trim() || undefined,
         documentsReceived,
+        attachments,
         informationReceived: informationReceived.trim() || undefined,
       });
 
@@ -495,7 +596,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
           <div className="p-3 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
             <div className="flex items-center gap-1.5 font-bold text-indigo-950">
               <Wand2 className="h-4 w-4 text-indigo-600 animate-pulse" />
-              <span>Copy & Paste Email Auto-Fill</span>
+              <span>Thread-Aware AI Email Auto-Fill</span>
             </div>
 
             <button
@@ -504,7 +605,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
               className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              <span>{showAiBox ? 'Hide AI Auto-Fill Box' : '✨ Paste Raw Email/Chat'}</span>
+              <span>{showAiBox ? 'Hide AI Auto-Fill Box' : '✨ Paste Email (With Thread Context)'}</span>
             </button>
           </div>
         )}
@@ -515,9 +616,9 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-indigo-200 flex items-center gap-1.5">
                 <Wand2 className="h-3.5 w-3.5 text-indigo-400" />
-                <span>Paste raw sent or received email/chat text below:</span>
+                <span>Tip: Fill Manufacturer, Date & Thread below first, then paste the email:</span>
               </span>
-              <span className="text-[10px] font-mono text-indigo-300">Powered by Gemini 3.8 Flash</span>
+              <span className="text-[10px] font-mono text-indigo-300">Gemini Thread History Enabled</span>
             </div>
 
             <textarea
@@ -530,7 +631,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
 
             <div className="flex items-center justify-between pt-1">
               <span className="text-[10px] text-indigo-300">
-                Automatically extracts manufacturer, subject, outcomes, prices, status & follow-up dates.
+                Gemini reviews prior thread messages for precise flow, status, and technical extraction.
               </span>
 
               <button
@@ -780,31 +881,139 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
             />
           </div>
 
-          {/* Attached Files Section */}
-          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-            <label className="block font-semibold text-slate-800">
-              Attached Documents & Chat Transcripts
-            </label>
+          {/* Attached Files & Attachments Section */}
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block font-semibold text-slate-800 flex items-center gap-1.5">
+                  <Paperclip className="h-4 w-4 text-indigo-600" />
+                  <span>Attachments & Technical Documents</span>
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  Upload supplier datasheets, quotations, Gerber/CAD files, or photos
+                </p>
+              </div>
 
-            {/* Saved Full Email Content */}
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                <span>Full Pasted Email Text (Saved directly in record)</span>
-                <span className="text-[10px] text-slate-400 font-normal">Auto-saved from AI paste or manual input</span>
-              </label>
-              <textarea
-                rows={3}
-                value={fullEmailText}
-                onChange={e => setFullEmailText(e.target.value)}
-                placeholder="Full raw email text or chat transcript saved in database..."
-                className="w-full p-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-mono text-xs leading-relaxed"
-              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                <span>+ Upload Files</span>
+              </button>
             </div>
 
-            {/* Technical Documents Received */}
+            {/* Hidden File Input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              multiple
+              onChange={e => {
+                handleFilesSelected(e.target.files);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }}
+              className="hidden"
+            />
+
+            {/* Drag & Drop Upload Zone */}
+            <div
+              onDragOver={e => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={e => {
+                e.preventDefault();
+                setIsDragging(false);
+              }}
+              onDrop={e => {
+                e.preventDefault();
+                setIsDragging(false);
+                handleFilesSelected(e.dataTransfer.files);
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={`p-4 rounded-xl border-2 border-dashed text-center transition-all cursor-pointer ${
+                isDragging
+                  ? 'border-indigo-500 bg-indigo-50/80'
+                  : 'border-slate-300 bg-white hover:border-indigo-400 hover:bg-slate-50/80'
+              }`}
+            >
+              <div className="flex flex-col items-center justify-center gap-1.5">
+                <div className="h-8 w-8 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                  <Upload className="h-4 w-4" />
+                </div>
+                <div className="text-xs text-slate-700 font-medium">
+                  <span className="font-semibold text-indigo-600">Click to browse</span> or drag & drop files here
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  PDF datasheets, CAD/Gerber, Word, Excel/CSV, images (PNG, JPG), ZIP archives
+                </p>
+              </div>
+            </div>
+
+            {/* Uploaded File Attachments List */}
+            {attachments.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Uploaded Files ({attachments.length}):
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {attachments.map(att => {
+                    const isImg = att.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(att.name);
+                    const isPdf = att.name.toLowerCase().endsWith('.pdf');
+
+                    return (
+                      <div
+                        key={att.id}
+                        className="p-2.5 bg-white border border-slate-200 rounded-lg flex items-center justify-between gap-2 shadow-2xs hover:border-slate-300 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`p-1.5 rounded-md ${
+                            isPdf ? 'bg-rose-50 text-rose-600' : isImg ? 'bg-amber-50 text-amber-600' : 'bg-indigo-50 text-indigo-600'
+                          }`}>
+                            {isImg ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-mono text-xs font-semibold text-slate-800 truncate" title={att.name}>
+                              {att.name}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {formatFileSize(att.size)}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {att.dataUrl && (
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadAttachmentFile(att)}
+                              className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded"
+                              title="Download attachment"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAttachment(att.id, att.name)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
+                            title="Remove attachment"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Referenced Document Names */}
             <div>
-              <label className="block text-[11px] text-slate-500 mb-1">
-                Technical Manuals / Specifications Received
+              <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                Document Names / Manual Reference Keys
               </label>
               <div className="flex gap-2">
                 <input
@@ -817,15 +1026,15 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
                       handleAddDocument();
                     }
                   }}
-                  placeholder="Enter manual filename..."
+                  placeholder="e.g. A7671G_SPEC_202508.pdf"
                   className="flex-1 p-1.5 bg-white border border-slate-200 rounded-lg text-slate-800 font-mono text-xs"
                 />
                 <button
                   type="button"
                   onClick={handleAddDocument}
-                  className="px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-medium hover:bg-slate-900"
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-medium cursor-pointer"
                 >
-                  + Add
+                  + Add Name
                 </button>
               </div>
 
@@ -834,14 +1043,15 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
                   {documentsReceived.map((doc, idx) => (
                     <span
                       key={idx}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 rounded-md text-[11px] font-mono text-slate-700"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 rounded-md text-[11px] font-mono text-slate-700 shadow-2xs"
                     >
-                      <FileText className="h-3 w-3 text-emerald-600" />
+                      <FileCheck className="h-3 w-3 text-emerald-600" />
                       <span>{doc}</span>
                       <button
                         type="button"
                         onClick={() => handleRemoveDocument(idx)}
-                        className="text-slate-400 hover:text-rose-600 ml-1"
+                        className="text-slate-400 hover:text-rose-600 ml-1 cursor-pointer"
+                        title="Remove"
                       >
                         ✕
                       </button>
@@ -849,6 +1059,21 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Saved Full Email Content */}
+            <div className="pt-2 border-t border-slate-200/70">
+              <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Full Pasted Email Text (Saved directly in record)</span>
+                <span className="text-[10px] text-slate-400 font-normal">Auto-saved from AI paste or manual input</span>
+              </label>
+              <textarea
+                rows={3}
+                value={fullEmailText}
+                onChange={e => setFullEmailText(e.target.value)}
+                placeholder="Full raw email text or chat transcript saved in database..."
+                className="w-full p-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-mono text-xs leading-relaxed"
+              />
             </div>
           </div>
 

@@ -9,6 +9,7 @@ import { LoginView } from './components/LoginView';
 import { CommunicationModal } from './components/CommunicationModal';
 import { ManufacturerModal } from './components/ManufacturerModal';
 import { DocumentPreviewModal } from './components/DocumentPreviewModal';
+import { CloudSyncIndicator } from './components/CloudSyncIndicator';
 import { CommunicationEntry, Manufacturer } from './types';
 
 const MainLayout: React.FC = () => {
@@ -133,6 +134,9 @@ const MainLayout: React.FC = () => {
         filename={previewDocName}
         title={previewDocTitle}
       />
+
+      {/* Cloud DB Sync Status Indicator in bottom-right corner */}
+      <CloudSyncIndicator />
     </div>
   );
 };
