@@ -19,7 +19,7 @@ export const SummaryMetricsPanel: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(true);
 
   // Key Metrics Calculations
-  const activeComms = communications.filter(c => c.status !== 'Completed');
+  const activeComms = communications.filter(c => c.status !== 'Completed' && c.status !== 'Reply Received');
   const awaitingReply = communications.filter(c => c.status === 'Awaiting Reply');
   const actionRequired = communications.filter(
     c => c.status === 'Action Required' || c.status === 'Pending Review'
@@ -28,7 +28,7 @@ export const SummaryMetricsPanel: React.FC = () => {
 
   // Status Breakdown Data for Chart
   const statusCounts = {
-    'Completed': communications.filter(c => c.status === 'Completed').length,
+    'Completed': communications.filter(c => c.status === 'Completed' || c.status === 'Reply Received').length,
     'Awaiting Reply': awaitingReply.length,
     'Information Received': communications.filter(c => c.status === 'Information Received').length,
     'Action Required': actionRequired.length,

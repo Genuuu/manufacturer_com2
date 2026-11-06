@@ -736,7 +736,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       createdAt: now,
     };
 
-    setCommunications(prev => [newComm, ...prev]);
+    const isReceivedReply = !newComm.channel.toLowerCase().includes('sent');
+
+    setCommunications(prev => {
+      const updatedPrev = isReceivedReply
+        ? prev.map(c => {
+            if (
+              c.manufacturerId === newComm.manufacturerId &&
+              c.threadId === finalThreadId &&
+              c.status === 'Awaiting Reply'
+            ) {
+              const updatedEntry: CommunicationEntry = {
+                ...c,
+                status: 'Reply Received',
+              };
+              setDoc(doc(db, 'communications', c.id), updatedEntry, { merge: true }).catch(err => {
+                handleFirestoreError(err, OperationType.UPDATE, `communications/${c.id}`);
+              });
+              return updatedEntry;
+            }
+            return c;
+          })
+        : prev;
+
+      return [newComm, ...updatedPrev];
+    });
+
     setDoc(doc(db, 'communications', newComm.id), newComm).catch(err => {
       handleFirestoreError(err, OperationType.WRITE, `communications/${newComm.id}`);
     });

@@ -70,15 +70,24 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
 
   const getChannelBadge = (ch: string) => {
     const isSent = ch.toLowerCase().includes('sent');
+    const isLiveChat = ch.toLowerCase().includes('live chat');
     return (
       <span
         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
-          isSent
+          isLiveChat
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            : isSent
             ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
             : 'bg-blue-50 text-blue-700 border-blue-200'
         }`}
       >
-        {isSent ? <Send className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
+        {isLiveChat ? (
+          <MessageSquare className="h-3 w-3" />
+        ) : isSent ? (
+          <Send className="h-3 w-3" />
+        ) : (
+          <Mail className="h-3 w-3" />
+        )}
         <span>{ch}</span>
       </span>
     );
@@ -114,19 +123,6 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
           </div>
 
           <div className="flex items-center gap-2">
-            {firstMsg && (
-              <button
-                onClick={() => {
-                  onClose();
-                  onOpenCommModalWithThread(firstMsg.manufacturerId, threadId);
-                }}
-                disabled={!hasPermission('canLogCommunication')}
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs disabled:opacity-40"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>+ Reply to Thread</span>
-              </button>
-            )}
             <button
               onClick={onClose}
               className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
@@ -160,6 +156,10 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
             
             {threadComms.map((comm, idx) => {
               const isSent = comm.channel.toLowerCase().includes('sent');
+              const isLiveChat =
+                comm.channel.toLowerCase().includes('live chat') ||
+                Boolean(comm.chatTurns && comm.chatTurns.length > 0) ||
+                Boolean(comm.outboundSummary && comm.inboundResponse);
 
               return (
                 <div key={comm.id} className="relative group">
@@ -167,7 +167,9 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
                   {/* Timeline Bullet Node */}
                   <div
                     className={`absolute -left-6 top-3 h-5 w-5 rounded-full border-2 bg-white flex items-center justify-center text-[10px] font-bold ${
-                      isSent
+                      isLiveChat
+                        ? 'border-emerald-600 text-emerald-600'
+                        : isSent
                         ? 'border-indigo-600 text-indigo-600'
                         : 'border-blue-600 text-blue-600'
                     }`}
@@ -193,7 +195,7 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
 
                       <div className="flex items-center gap-1.5">
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
-                          comm.status === 'Completed'
+                          comm.status === 'Completed' || comm.status === 'Reply Received'
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             : comm.status === 'Information Received'
                             ? 'bg-blue-50 text-blue-700 border-blue-200'
@@ -208,9 +210,93 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
                     <div className="p-4 space-y-3">
                       <div>
                         <h4 className="font-bold text-xs text-slate-900">{comm.subject}</h4>
-                        <p className="text-xs text-slate-700 mt-1 font-medium bg-slate-50 p-2.5 rounded-lg border border-slate-200/70">
-                          {comm.keyOutcome}
-                        </p>
+                        {comm.chatTurns && comm.chatTurns.length > 0 ? (
+                          <div className="mt-2 space-y-2">
+                            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500 pb-1 border-b border-slate-200/80">
+                                <span>💬 Live Chat Conversation ({comm.chatTurns.length} messages)</span>
+                                <span>Sent & Instant Replies</span>
+                              </div>
+                              <div className="space-y-2">
+                                {comm.chatTurns.map((turn, tIdx) => {
+                                  const isUs = turn.sender === 'us';
+                                  return (
+                                    <div
+                                      key={turn.id || tIdx}
+                                      className={`p-2.5 rounded-lg border text-xs ${
+                                        isUs
+                                          ? 'bg-indigo-50/70 border-indigo-200/90 mr-0 sm:mr-8'
+                                          : 'bg-emerald-50/70 border-emerald-200/90 ml-0 sm:ml-8'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-2 mb-1">
+                                        <span
+                                          className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
+                                            isUs ? 'text-indigo-700' : 'text-emerald-800'
+                                          }`}
+                                        >
+                                          {isUs ? (
+                                            <>
+                                              <Send className="h-2.5 w-2.5" />
+                                              <span>📤 Turn #{tIdx + 1} · Us (Sent)</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <MessageSquare className="h-2.5 w-2.5" />
+                                              <span>📩 Turn #{tIdx + 1} · {comm.manufacturerName} (Reply)</span>
+                                            </>
+                                          )}
+                                        </span>
+                                        {turn.timestamp && (
+                                          <span className="text-[10px] font-mono text-slate-400">
+                                            {turn.timestamp}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-slate-800 font-medium whitespace-pre-line leading-relaxed">
+                                        {turn.message}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {comm.keyOutcome && (
+                              <div className="text-xs text-slate-700 font-medium bg-slate-50 p-2.5 rounded-lg border border-slate-200/70 whitespace-pre-line">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                                  Session Summary / Outcome:
+                                </span>
+                                {comm.keyOutcome}
+                              </div>
+                            )}
+                          </div>
+                        ) : comm.outboundSummary || comm.inboundResponse ? (
+                          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {comm.outboundSummary && (
+                              <div className="p-2.5 bg-indigo-50/60 border border-indigo-200/80 rounded-lg text-xs">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1 mb-1">
+                                  <Send className="h-3 w-3" />
+                                  <span>📤 Sent Inquiry / Our Messages:</span>
+                                </span>
+                                <p className="text-slate-800 font-medium whitespace-pre-line">{comm.outboundSummary}</p>
+                              </div>
+                            )}
+                            {comm.inboundResponse && (
+                              <div className="p-2.5 bg-emerald-50/60 border border-emerald-200/80 rounded-lg text-xs">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1 mb-1">
+                                  <MessageSquare className="h-3 w-3" />
+                                  <span>📩 Instant Reply / Outcome Received:</span>
+                                </span>
+                                <p className="text-slate-800 font-medium whitespace-pre-line">{comm.inboundResponse}</p>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-700 mt-1 font-medium bg-slate-50 p-2.5 rounded-lg border border-slate-200/70 whitespace-pre-line">
+                            {comm.keyOutcome}
+                          </p>
+                        )}
                       </div>
 
                       {comm.informationReceived && (

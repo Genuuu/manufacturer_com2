@@ -36,7 +36,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   const [selectedMId, setSelectedMId] = useState<string>('ALL');
 
   // Overall Metrics
-  const activeComms = communications.filter(c => c.status !== 'Completed');
+  const activeComms = communications.filter(c => c.status !== 'Completed' && c.status !== 'Reply Received');
   const awaitingReply = communications.filter(c => c.status === 'Awaiting Reply');
   const actionRequired = communications.filter(
     c => c.status === 'Action Required' || c.status === 'Pending Review'
@@ -52,7 +52,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
   // Status Counts for Selected Scope
   const scopeStatusCounts = {
-    'Completed': manufacturerComms.filter(c => c.status === 'Completed').length,
+    'Completed': manufacturerComms.filter(c => c.status === 'Completed' || c.status === 'Reply Received').length,
     'Awaiting Reply': manufacturerComms.filter(c => c.status === 'Awaiting Reply').length,
     'Information Received': manufacturerComms.filter(c => c.status === 'Information Received').length,
     'Action Required': manufacturerComms.filter(c => c.status === 'Action Required' || c.status === 'Pending Review').length,

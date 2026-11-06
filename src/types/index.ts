@@ -24,6 +24,7 @@ export type CommChannel =
 export type CommStatus = 
   | 'Completed'
   | 'Awaiting Reply'
+  | 'Reply Received'
   | 'Information Received'
   | 'Pending Review'
   | 'Action Required';
@@ -35,6 +36,13 @@ export interface FileAttachment {
   type: string; // MIME type or extension
   dataUrl?: string; // base64 / data URL for viewing & downloading
   uploadedAt: string;
+}
+
+export interface ChatTurn {
+  id: string;
+  sender: 'us' | 'supplier';
+  timestamp?: string;
+  message: string;
 }
 
 export interface CommunicationEntry {
@@ -51,10 +59,13 @@ export interface CommunicationEntry {
   nextAction?: string;
   followUpDate?: string; // YYYY-MM-DD
   threadDoc?: string; // legacy attachment filename if any
-  fullEmailText?: string; // Full raw pasted email content
+  fullEmailText?: string; // Full raw pasted email content or chat transcript
   documentsReceived?: string[]; // array of filenames, e.g. ["A76XX_Series_AT_Command_Manual_V2.02.pdf"]
   attachments?: FileAttachment[]; // uploaded file attachments with metadata & dataUrl
   informationReceived?: string;
+  chatTurns?: ChatTurn[]; // Multi-turn back-and-forth messages for Live Chat sessions
+  outboundSummary?: string; // Legacy Live Chat outbound summary
+  inboundResponse?: string; // Legacy Live Chat inbound response
   entryKey?: string; // "M001|1"
   createdBy?: string;
   createdAt?: string;

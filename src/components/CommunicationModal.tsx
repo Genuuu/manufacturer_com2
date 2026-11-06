@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { CommunicationEntry, CommChannel, CommStatus, FileAttachment } from '../types';
+import { CommunicationEntry, CommChannel, CommStatus, FileAttachment, ChatTurn } from '../types';
 import {
   X,
   Plus,
@@ -76,7 +76,18 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiSuccessMsg, setAiSuccessMsg] = useState('');
 
-  const [entryType, setEntryType] = useState<'received' | 'sent'>('received');
+  const [entryType, setEntryType] = useState<'received' | 'sent' | 'live_chat'>('received');
+  const [outboundSummary, setOutboundSummary] = useState('');
+  const [inboundResponse, setInboundResponse] = useState('');
+  const [chatTurns, setChatTurns] = useState<ChatTurn[]>([
+    { id: 'turn-1', sender: 'us', timestamp: '', message: '' },
+    { id: 'turn-2', sender: 'supplier', timestamp: '', message: '' },
+  ]);
+
+  const createDefaultChatTurns = (): ChatTurn[] => [
+    { id: `turn-${Date.now()}-1`, sender: 'us', timestamp: '', message: '' },
+    { id: `turn-${Date.now()}-2`, sender: 'supplier', timestamp: '', message: '' },
+  ];
 
   // Sync state on open/edit
   useEffect(() => {
@@ -87,7 +98,9 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       setChannel(initialEntry.channel);
       
       const ch = initialEntry.channel.toLowerCase();
-      if (ch.includes('sent')) {
+      if (ch.includes('live chat') || (initialEntry.chatTurns && initialEntry.chatTurns.length > 0)) {
+        setEntryType('live_chat');
+      } else if (ch.includes('sent')) {
         setEntryType('sent');
       } else {
         setEntryType('received');
@@ -95,6 +108,34 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
 
       setSubject(initialEntry.subject);
       setKeyOutcome(initialEntry.keyOutcome);
+      setOutboundSummary(initialEntry.outboundSummary || '');
+      setInboundResponse(initialEntry.inboundResponse || '');
+
+      if (initialEntry.chatTurns && initialEntry.chatTurns.length > 0) {
+        setChatTurns(initialEntry.chatTurns);
+      } else if (initialEntry.outboundSummary || initialEntry.inboundResponse) {
+        const legacyTurns: ChatTurn[] = [];
+        if (initialEntry.outboundSummary) {
+          legacyTurns.push({
+            id: `turn-${Date.now()}-1`,
+            sender: 'us',
+            timestamp: '',
+            message: initialEntry.outboundSummary,
+          });
+        }
+        if (initialEntry.inboundResponse) {
+          legacyTurns.push({
+            id: `turn-${Date.now()}-2`,
+            sender: 'supplier',
+            timestamp: '',
+            message: initialEntry.inboundResponse,
+          });
+        }
+        setChatTurns(legacyTurns.length > 0 ? legacyTurns : createDefaultChatTurns());
+      } else {
+        setChatTurns(createDefaultChatTurns());
+      }
+
       setStatus(initialEntry.status);
       setNextAction(initialEntry.nextAction || '');
       setFollowUpDate(initialEntry.followUpDate || '');
@@ -122,6 +163,9 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
 
       setSubject('');
       setKeyOutcome('');
+      setOutboundSummary('');
+      setInboundResponse('');
+      setChatTurns(createDefaultChatTurns());
       setStatus('Completed');
       setNextAction('');
       setFollowUpDate('');
@@ -142,22 +186,46 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
   const currentManufacturer = manufacturers.find(m => m.id === manufacturerId);
   const existingThreads = getThreadsForManufacturer(manufacturerId);
 
-  const handleEntryTypeChange = (type: 'received' | 'sent') => {
+  const handleEntryTypeChange = (type: 'received' | 'sent' | 'live_chat') => {
     setEntryType(type);
     if (type === 'received') {
       setChannel('Email - Received');
     } else if (type === 'sent') {
       setChannel('Email - Sent');
+    } else if (type === 'live_chat') {
+      setChannel('Live Chat (Session)');
     }
   };
 
   const handleChannelChange = (newChannel: CommChannel) => {
     setChannel(newChannel);
-    if (newChannel.toLowerCase().includes('sent')) {
+    if (newChannel === 'Live Chat (Session)') {
+      setEntryType('live_chat');
+    } else if (newChannel.toLowerCase().includes('sent')) {
       setEntryType('sent');
     } else if (newChannel.toLowerCase().includes('received')) {
       setEntryType('received');
     }
+  };
+
+  const handleAddChatTurn = (sender: 'us' | 'supplier') => {
+    setChatTurns(prev => [
+      ...prev,
+      {
+        id: `turn-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        sender,
+        timestamp: '',
+        message: '',
+      },
+    ]);
+  };
+
+  const handleUpdateChatTurn = (id: string, patch: Partial<ChatTurn>) => {
+    setChatTurns(prev => prev.map(t => (t.id === id ? { ...t, ...patch } : t)));
+  };
+
+  const handleRemoveChatTurn = (id: string) => {
+    setChatTurns(prev => (prev.length > 1 ? prev.filter(t => t.id !== id) : prev));
   };
 
   const formatFileSize = (bytes: number) => {
@@ -274,7 +342,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
     const matchedManufacturerId = selectedM ? selectedM.id : manufacturerId;
     const manufacturerName = selectedM ? selectedM.name : 'Supplier';
 
-    const detectedType: 'received' | 'sent' = entryType;
+    const detectedType: 'received' | 'sent' | 'live_chat' = entryType;
     const detectedChannel: CommChannel = channel;
 
     // Prior thread messages for context
@@ -302,11 +370,21 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       )
     );
 
-    // 4. Formulate Subject / Purpose based on content + thread flow (not raw email subject header)
+    // 4. Formulate Subject / Purpose based on content + thread flow
     let extractedSubject = '';
     const lowerBody = bodyLines.join(' ').toLowerCase();
 
-    if (detectedType === 'sent') {
+    if (detectedType === 'live_chat') {
+      if (/quote|quotation|price|pricing|cost|moq/i.test(lowerBody)) {
+        extractedSubject = `Live chat session regarding pricing, MOQ, and lead time with ${manufacturerName}`;
+      } else if (/sample|evk|evaluation|test/i.test(lowerBody)) {
+        extractedSubject = `Live chat session on evaluation samples and specs with ${manufacturerName}`;
+      } else if (bodyLines[0]) {
+        extractedSubject = `Live Chat Session: ${bodyLines[0].slice(0, 65)}`;
+      } else {
+        extractedSubject = `Interactive Live Chat Session with ${manufacturerName}`;
+      }
+    } else if (detectedType === 'sent') {
       if (/quote|quotation|price|pricing|cost|moq/i.test(lowerBody)) {
         extractedSubject = `Requesting quotation, MOQ, and pricing from ${manufacturerName}`;
       } else if (/sample|evk|evaluation|test/i.test(lowerBody)) {
@@ -340,17 +418,61 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       }
     }
 
-    // 5. Formulate Summary (Sent) or Key Outcome (Received)
-    const extractedOutcome =
-      techSpecLines.slice(0, 2).join(' ') ||
-      bodyLines.slice(0, 2).join(' ').slice(0, 260) ||
-      (detectedType === 'sent'
-        ? `Sent email to ${manufacturerName}.`
-        : `Received correspondence from ${manufacturerName}.`);
+    // 5. Formulate Summary (Sent), Key Outcome (Received), or Multi-Turn Chat Turns (Live Chat)
+    const questionLines = bodyLines.filter(l => /\?/.test(l) || /^(we need|can you|could you|please|looking for|do you have)/i.test(l));
+    const answerLines = bodyLines.filter(l => !questionLines.includes(l));
 
-    // 6. Format clean bulleted Technical Specifications for Received Mail only
+    const localOutbound =
+      questionLines.slice(0, 2).join(' ') ||
+      bodyLines.slice(0, 1).join(' ') ||
+      `Inquired with ${manufacturerName} via live chat.`;
+
+    const localInbound =
+      techSpecLines.slice(0, 2).join(' ') ||
+      answerLines.slice(0, 2).join(' ') ||
+      `Supplier agent responded with details during live chat.`;
+
+    // Build multi-turn chatTurns array when in live_chat mode
+    const parsedChatTurns: Array<{ sender: 'us' | 'supplier'; timestamp: string; message: string }> = [];
+    if (detectedType === 'live_chat') {
+      let lastSender: 'us' | 'supplier' = 'us';
+      lines.forEach((rawLine, idx) => {
+        const timeMatch = rawLine.match(/^\[?(\d{1,2}:\d{2}(?:\s*[AP]M)?)\]?\s*[-:]?\s*(.*)$/i);
+        const extractedTime = timeMatch ? timeMatch[1] : '';
+        const restOfLine = timeMatch ? timeMatch[2] : rawLine;
+
+        const usPrefix = /^(me|us|you|buyer|engineer|our team|client|customer|q)\s*[:\-]\s*(.+)$/i.exec(restOfLine);
+        const supplierPrefix = /^(agent|supplier|vendor|sales|support|rep|service|a)\s*[:\-]\s*(.+)$/i.exec(restOfLine);
+
+        if (usPrefix) {
+          lastSender = 'us';
+          parsedChatTurns.push({ sender: 'us', timestamp: extractedTime, message: usPrefix[2].trim() });
+        } else if (supplierPrefix) {
+          lastSender = 'supplier';
+          parsedChatTurns.push({ sender: 'supplier', timestamp: extractedTime, message: supplierPrefix[2].trim() });
+        } else if (/\?$/.test(restOfLine) || /^(hi|hello|can you|do you|we need|what is)/i.test(restOfLine)) {
+          lastSender = 'us';
+          parsedChatTurns.push({ sender: 'us', timestamp: extractedTime, message: restOfLine.trim() });
+        } else {
+          const nextSender = idx === 0 ? 'us' : lastSender === 'us' ? 'supplier' : 'us';
+          lastSender = nextSender;
+          parsedChatTurns.push({ sender: nextSender, timestamp: extractedTime, message: restOfLine.trim() });
+        }
+      });
+    }
+
+    const extractedOutcome =
+      detectedType === 'live_chat'
+        ? `Completed ${parsedChatTurns.length || 2}-message live chat exchange with ${manufacturerName}. ${localInbound}`
+        : techSpecLines.slice(0, 2).join(' ') ||
+          bodyLines.slice(0, 2).join(' ').slice(0, 260) ||
+          (detectedType === 'sent'
+            ? `Sent email to ${manufacturerName}.`
+            : `Received correspondence from ${manufacturerName}.`);
+
+    // 6. Format clean bulleted Technical Specifications for Received Mail & Live Chat
     let formattedInfoReceived = '';
-    if (detectedType === 'received') {
+    if (detectedType !== 'sent') {
       const candidateLines = techSpecLines.length > 0 ? techSpecLines : bodyLines.slice(0, 4);
       formattedInfoReceived = candidateLines
         .map(l => (l.startsWith('•') || l.startsWith('-') ? l : `• ${l}`))
@@ -366,7 +488,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
     let detectedStatus: CommStatus =
       detectedType === 'sent' ? 'Awaiting Reply' : 'Information Received';
 
-    if (detectedType === 'received') {
+    if (detectedType !== 'sent') {
       if (
         /action required|please confirm|let us know|awaiting your confirmation|please approve|kindly advise/i.test(
           primaryMessage
@@ -389,8 +511,9 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       nextAction: '',
       followUpDate: '',
       informationReceived: formattedInfoReceived,
-      inboundContent: '',
-      outboundReply: '',
+      inboundContent: localInbound,
+      outboundReply: localOutbound,
+      chatTurns: parsedChatTurns,
       documentsReceived: uniqueDocs,
     };
   };
@@ -473,12 +596,48 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         data = parseEmailLocally(rawText);
       }
 
-      // Keep pre-entered Date, Manufacturer, Thread, Channel/Direction, and Sent/Received Mail untouched.
-      // Only fill Subject/Purpose, Summary/Key Outcome, Status, Information Received (for received mail), and Documents.
+      // Keep pre-entered Date, Manufacturer, Thread, Channel/Direction, and Mode untouched.
       if (data.subject) setSubject(data.subject);
 
-      const outcomeText = data.keyOutcome || '';
-      setKeyOutcome(outcomeText);
+      if (entryType === 'live_chat') {
+        if (data.chatTurns && Array.isArray(data.chatTurns) && data.chatTurns.length > 0) {
+          setChatTurns(
+            data.chatTurns.map((t: any, idx: number) => ({
+              id: `turn-${Date.now()}-${idx}`,
+              sender: t.sender === 'supplier' ? 'supplier' : 'us',
+              timestamp: t.timestamp || '',
+              message: t.message || '',
+            }))
+          );
+        } else {
+          const outText = data.outboundReply || '';
+          const inText = data.inboundContent || data.keyOutcome || '';
+          const fallbackTurns: ChatTurn[] = [];
+          if (outText) {
+            fallbackTurns.push({
+              id: `turn-${Date.now()}-1`,
+              sender: 'us',
+              timestamp: '',
+              message: outText,
+            });
+          }
+          if (inText) {
+            fallbackTurns.push({
+              id: `turn-${Date.now()}-2`,
+              sender: 'supplier',
+              timestamp: '',
+              message: inText,
+            });
+          }
+          if (fallbackTurns.length > 0) {
+            setChatTurns(fallbackTurns);
+          }
+        }
+        setKeyOutcome(data.keyOutcome || '');
+      } else {
+        const outcomeText = data.keyOutcome || '';
+        setKeyOutcome(outcomeText);
+      }
 
       if (data.status) setStatus(data.status as CommStatus);
 
@@ -500,7 +659,11 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
 
       setAiSuccessMsg(
         `✨ Parsed according to your pre-entered ${
-          entryType === 'sent' ? 'Sent Email' : 'Received Mail'
+          entryType === 'live_chat'
+            ? `Multi-Turn Live Chat (${data.chatTurns?.length || 2} conversation messages extracted)`
+            : entryType === 'sent'
+            ? 'Sent Email'
+            : 'Received Mail'
         } & thread context! Review the fields below and click "Record Communication".`
       );
       setShowAiBox(false);
@@ -528,6 +691,33 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       assignedThreadId = getNextThreadId(manufacturerId);
     }
 
+    const validChatTurns =
+      entryType === 'live_chat'
+        ? chatTurns
+            .map(t => ({
+              ...t,
+              timestamp: t.timestamp?.trim() || undefined,
+              message: t.message.trim(),
+            }))
+            .filter(t => Boolean(t.message))
+        : undefined;
+
+    if (entryType === 'live_chat' && (!validChatTurns || validChatTurns.length === 0) && !keyOutcome.trim()) {
+      setErrorMsg('Please enter at least one message in the Live Chat conversation log or provide a session summary.');
+      return;
+    }
+
+    // For Live Chat, synthesize keyOutcome from chatTurns if keyOutcome was left blank
+    let finalKeyOutcome = keyOutcome.trim();
+    if (entryType === 'live_chat' && !finalKeyOutcome && validChatTurns && validChatTurns.length > 0) {
+      const usCount = validChatTurns.filter(t => t.sender === 'us').length;
+      const supCount = validChatTurns.filter(t => t.sender === 'supplier').length;
+      const lastSupplierTurn = [...validChatTurns].reverse().find(t => t.sender === 'supplier');
+      finalKeyOutcome = `Live Chat (${validChatTurns.length} msgs: ${usCount} sent, ${supCount} replies)${
+        lastSupplierTurn ? ` — Latest reply: ${lastSupplierTurn.message.slice(0, 140)}` : ''
+      }`;
+    }
+
     if (isEditing && initialEntry) {
       const res = updateCommunication(initialEntry.id, {
         date,
@@ -537,7 +727,10 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         threadId: assignedThreadId,
         channel,
         subject: subject.trim(),
-        keyOutcome: keyOutcome.trim(),
+        keyOutcome: finalKeyOutcome,
+        chatTurns: entryType === 'live_chat' ? validChatTurns : undefined,
+        outboundSummary: undefined,
+        inboundResponse: undefined,
         status,
         nextAction: nextAction.trim() || undefined,
         followUpDate: followUpDate || undefined,
@@ -561,7 +754,8 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         threadId: assignedThreadId,
         channel,
         subject: subject.trim(),
-        keyOutcome: keyOutcome.trim(),
+        keyOutcome: finalKeyOutcome,
+        chatTurns: entryType === 'live_chat' ? validChatTurns : undefined,
         status,
         nextAction: nextAction.trim() || undefined,
         followUpDate: followUpDate || undefined,
@@ -622,7 +816,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
               className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              <span>{showAiBox ? 'Hide AI Auto-Fill Box' : '✨ Paste Email (Uses Pre-Entered Details)'}</span>
+              <span>{showAiBox ? 'Hide AI Auto-Fill Box' : '✨ Paste Email / Chat (Uses Pre-Entered Details)'}</span>
             </button>
           </div>
         )}
@@ -633,10 +827,15 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-semibold text-indigo-200 flex items-center gap-1.5">
                 <Wand2 className="h-3.5 w-3.5 text-indigo-400" />
-                <span>Step 1: Pre-enter Date, Manufacturer, Thread, Channel & Sent/Received below. Step 2: Paste email:</span>
+                <span>Step 1: Pre-enter Date, Manufacturer, Thread, Channel & Mode below. Step 2: Paste transcript:</span>
               </span>
               <span className="text-[10px] font-mono bg-indigo-900/90 border border-indigo-700 px-2 py-0.5 rounded text-indigo-200">
-                {entryType === 'sent' ? '📤 Sent Email' : '📩 Received Mail'} • {currentManufacturer?.name || manufacturerId} • {threadSelection}
+                {entryType === 'live_chat'
+                  ? '💬 Live Chat (Sent + Received)'
+                  : entryType === 'sent'
+                  ? '📤 Sent Email'
+                  : '📩 Received Mail'}{' '}
+                • {currentManufacturer?.name || manufacturerId} • {threadSelection}
               </span>
             </div>
 
@@ -644,13 +843,23 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
               rows={4}
               value={rawText}
               onChange={e => setRawText(e.target.value)}
-              placeholder={`Paste ${entryType === 'sent' ? 'sent email' : 'received mail'} text here...`}
+              placeholder={
+                entryType === 'live_chat'
+                  ? 'Paste full live chat conversation (both sent inquiries and instant replies) here...'
+                  : `Paste ${entryType === 'sent' ? 'sent email' : 'received mail'} text here...`
+              }
               className="w-full text-xs font-sans p-2.5 bg-indigo-900/80 border border-indigo-700 rounded-lg text-white placeholder:text-indigo-300/60 focus:outline-hidden focus:ring-2 focus:ring-indigo-400 leading-relaxed"
             />
 
             <div className="flex items-center justify-between pt-1">
               <span className="text-[10px] text-indigo-300">
-                Parses strictly according to your pre-entered Date, Manufacturer, Thread, Channel & {entryType === 'sent' ? 'Sent Email' : 'Received Mail'} selection.
+                Parses strictly according to your pre-entered Date, Manufacturer, Thread, Channel &{' '}
+                {entryType === 'live_chat'
+                  ? 'Live Chat (Sent & Received)'
+                  : entryType === 'sent'
+                  ? 'Sent Email'
+                  : 'Received Mail'}{' '}
+                selection.
               </span>
 
               <button
@@ -662,7 +871,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
                 {isAiLoading ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin text-slate-950" />
-                    <span>Analyzing Thread & Mail...</span>
+                    <span>Analyzing Thread & Text...</span>
                   </>
                 ) : (
                   <>
@@ -694,17 +903,17 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs flex-1 min-h-0 overflow-y-auto">
           
-          {/* Pre-Entered Details Section: Sent/Received, Date, Manufacturer, Thread, Channel */}
+          {/* Pre-Entered Details Section: Mode, Date, Manufacturer, Thread, Channel */}
           <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3.5">
             <div className="flex items-center justify-between">
               <label className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                <span>1. Pre-Enter Mail Context & Direction</span>
+                <span>1. Pre-Enter Mail / Chat Context & Direction</span>
               </label>
               <span className="text-[11px] text-slate-500">Select these before AI parsing</span>
             </div>
 
-            {/* Sent Email vs Received Mail (2 options) */}
-            <div className="grid grid-cols-2 gap-2.5">
+            {/* Received Mail vs Sent Email vs Live Chat (Simultaneous Sent & Received) */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <button
                 type="button"
                 onClick={() => handleEntryTypeChange('received')}
@@ -733,6 +942,21 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
                   <span>📤 Sent Email</span>
                 </div>
                 <span className="text-[10px] text-slate-500 font-normal leading-tight">Outbound message to supplier</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleEntryTypeChange('live_chat')}
+                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
+                  entryType === 'live_chat'
+                    ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500/20 font-bold'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold">
+                  <span>💬 Live Chat (Multi-Turn)</span>
+                </div>
+                <span className="text-[10px] text-slate-500 font-normal leading-tight">Log multiple back-and-forth chat messages</span>
               </button>
             </div>
 
@@ -815,28 +1039,169 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
               required
               value={subject}
               onChange={e => setSubject(e.target.value)}
-              placeholder="Enter subject or purpose of this communication"
-              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
-            />
-          </div>
-
-          {/* Key Outcome / Summary */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">
-              {entryType === 'sent' ? 'Summary' : 'Key Outcome / Latest Update'}
-            </label>
-            <textarea
-              rows={2}
-              value={keyOutcome}
-              onChange={e => setKeyOutcome(e.target.value)}
               placeholder={
-                entryType === 'sent'
-                  ? 'Summarize the sent email content...'
-                  : 'Summarize the key outcome, quote details, or response...'
+                entryType === 'live_chat'
+                  ? 'Enter purpose of this live chat session'
+                  : 'Enter subject or purpose of this communication'
               }
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
             />
           </div>
+
+          {/* Live Chat Multi-Turn Conversation Log OR Single Summary / Key Outcome */}
+          {entryType === 'live_chat' ? (
+            <div className="space-y-3">
+              <div className="p-3.5 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="font-bold text-emerald-950 text-xs flex items-center gap-1.5">
+                      <span>💬 Live Chat Multi-Turn Conversation Log</span>
+                    </span>
+                    <p className="text-[11px] text-emerald-800/80">
+                      Add as many Sent and Received messages as occurred in the live chat session
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-300">
+                    {chatTurns.length} {chatTurns.length === 1 ? 'Turn' : 'Turns'}
+                  </span>
+                </div>
+
+                {/* Conversation Turns List */}
+                <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1">
+                  {chatTurns.map((turn, idx) => {
+                    const isUs = turn.sender === 'us';
+                    return (
+                      <div
+                        key={turn.id}
+                        className={`p-3 rounded-xl border transition-all ${
+                          isUs
+                            ? 'bg-indigo-50/70 border-indigo-200 ml-0 sm:mr-6'
+                            : 'bg-white border-emerald-300 ml-0 sm:ml-6 shadow-2xs'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono font-bold text-slate-400">
+                              #{idx + 1}
+                            </span>
+
+                            {/* Sender Toggle Pill */}
+                            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateChatTurn(turn.id, { sender: 'us' })}
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
+                                  isUs
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'text-slate-600 hover:bg-slate-100'
+                                }`}
+                              >
+                                📤 Us (Sent)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateChatTurn(turn.id, { sender: 'supplier' })}
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors cursor-pointer ${
+                                  !isUs
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'text-slate-600 hover:bg-slate-100'
+                                }`}
+                              >
+                                📩 Supplier (Reply)
+                              </button>
+                            </div>
+
+                            <input
+                              type="text"
+                              value={turn.timestamp || ''}
+                              onChange={e => handleUpdateChatTurn(turn.id, { timestamp: e.target.value })}
+                              placeholder="Time (optional, e.g. 14:05)"
+                              className="w-36 px-2 py-0.5 text-[10px] font-mono bg-white border border-slate-200 rounded text-slate-700 placeholder:text-slate-400"
+                            />
+                          </div>
+
+                          {chatTurns.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveChatTurn(turn.id)}
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Remove this message turn"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        <textarea
+                          rows={2}
+                          value={turn.message}
+                          onChange={e => handleUpdateChatTurn(turn.id, { message: e.target.value })}
+                          placeholder={
+                            isUs
+                              ? `Message #${idx + 1} sent by our team...`
+                              : `Reply #${idx + 1} received from ${currentManufacturer?.name || 'supplier'}...`
+                          }
+                          className="w-full p-2 bg-white border border-slate-200 rounded-lg text-slate-900 text-xs leading-relaxed"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Quick Add Turn Buttons */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-emerald-200/80">
+                  <button
+                    type="button"
+                    onClick={() => handleAddChatTurn('us')}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>+ Add Our Message (Sent)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleAddChatTurn('supplier')}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>+ Add Supplier Reply (Received)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Overall Session Outcome / Summary */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Overall Live Chat Session Summary / Key Outcome (Optional — auto-synthesized if blank)
+                </label>
+                <textarea
+                  rows={2}
+                  value={keyOutcome}
+                  onChange={e => setKeyOutcome(e.target.value)}
+                  placeholder="Overall takeaway from this multi-turn live chat session..."
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
+                />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                {entryType === 'sent' ? 'Summary' : 'Key Outcome / Latest Update'}
+              </label>
+              <textarea
+                rows={2}
+                value={keyOutcome}
+                onChange={e => setKeyOutcome(e.target.value)}
+                placeholder={
+                  entryType === 'sent'
+                    ? 'Summarize the sent email content...'
+                    : 'Summarize the key outcome, quote details, or response...'
+                }
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
+              />
+            </div>
+          )}
 
           {/* Row 3: Status, Follow-up Date */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -849,6 +1214,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
               >
                 <option value="Completed">Completed</option>
                 <option value="Awaiting Reply">Awaiting Reply</option>
+                <option value="Reply Received">Reply Received</option>
                 <option value="Information Received">Information Received</option>
                 <option value="Pending Review">Pending Review</option>
                 <option value="Action Required">Action Required</option>
@@ -866,7 +1232,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
             </div>
           </div>
 
-          {/* Information Received / Technical Specifications (Only for Received / Inbound Mails) */}
+          {/* Information Received / Technical Specifications (For Received Mail & Live Chat) */}
           {entryType !== 'sent' && (
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
