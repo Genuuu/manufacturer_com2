@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { CommunicationEntry, CommChannel, CommStatus, FileAttachment, ChatTurn } from '../types';
+import { compareCommByEntryOrder } from '../utils/spreadsheetSync';
 import {
   X,
   Plus,
@@ -345,14 +346,14 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
     const detectedType: 'received' | 'sent' | 'live_chat' = entryType;
     const detectedChannel: CommChannel = channel;
 
-    // Prior thread messages for context
+    // Prior thread messages for context (strictly in entry order)
     const priorThreadMsgs = communications
       .filter(
         c =>
           c.manufacturerId === manufacturerId &&
           (threadSelection === 'New Thread' ? false : c.threadId === threadSelection)
       )
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .sort(compareCommByEntryOrder);
     const lastThreadMsg = priorThreadMsgs.length > 0 ? priorThreadMsgs[priorThreadMsgs.length - 1] : null;
 
     // 2. Clean body lines (remove headers, greetings, sign-offs)
@@ -533,11 +534,13 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       const selectedManufacturerObj = manufacturers.find(m => m.id === manufacturerId);
       const mName = selectedManufacturerObj ? selectedManufacturerObj.name : '';
 
-      const priorMessages = communications.filter(
-        c =>
-          c.manufacturerId === manufacturerId &&
-          (threadSelection === 'New Thread' ? false : c.threadId === threadSelection)
-      );
+      const priorMessages = communications
+        .filter(
+          c =>
+            c.manufacturerId === manufacturerId &&
+            (threadSelection === 'New Thread' ? false : c.threadId === threadSelection)
+        )
+        .sort(compareCommByEntryOrder);
 
       let data: any = null;
 

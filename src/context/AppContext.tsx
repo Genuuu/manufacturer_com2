@@ -1,14 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from 'firebase/auth';
 import {
   collection,
   doc,
   onSnapshot,
   setDoc,
-  updateDoc,
   deleteDoc,
   getDocs,
-  writeBatch
 } from 'firebase/firestore';
 import {
   Manufacturer,
@@ -22,11 +20,32 @@ import {
 import {
   INITIAL_MANUFACTURERS,
   INITIAL_COMMUNICATIONS,
-  INITIAL_USERS,
   DEFAULT_ROLE_PERMISSIONS,
   INITIAL_AUDIT_LOGS,
 } from '../data/initialData';
-import { testFirestoreConnection, auth, googleProvider, db, handleFirestoreError, OperationType, setCachedAccessToken } from '../firebase';
+import {
+  testFirestoreConnection,
+  auth,
+  googleProvider,
+  db,
+  handleFirestoreError,
+  OperationType,
+  setCachedAccessToken,
+  subscribeAccessToken,
+  getAccessToken,
+} from '../firebase';
+import {
+  SheetBackupConfig,
+  compareCommByEntryOrder,
+  compareManufacturerById,
+  parseEntryKeyIndex,
+  computeSpreadsheetDataHash,
+  writeBackupToGoogleSpreadsheet,
+  formatDocumentsCell,
+  formatChatTranscriptCell,
+} from '../utils/spreadsheetSync';
+
+export type { SheetBackupConfig };
 
 export type NavTab = 
   | 'overview'
@@ -34,16 +53,6 @@ export type NavTab =
   | 'manufacturers'
   | 'spreadsheet'
   | 'permissions';
-
-export interface SheetBackupConfig {
-  spreadsheetId: string;
-  spreadsheetUrl: string;
-  spreadsheetTitle: string;
-  lastSyncedAt: string;
-  lastSyncedManufacturerCount: number;
-  lastSyncedCommCount: number;
-  lastSyncedHash: string;
-}
 
 interface AppContextType {
   manufacturers: Manufacturer[];
@@ -102,6 +111,9 @@ interface AppContextType {
   sheetBackupConfig: SheetBackupConfig | null;
   saveSheetBackupConfig: (config: SheetBackupConfig | null) => void;
   currentDataHash: string;
+  isAutoSyncingSheet: boolean;
+  lastSheetSyncError: string | null;
+  triggerGoogleSheetSync: (tokenOverride?: string) => Promise<SheetBackupConfig | null>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -133,6 +145,24 @@ function isHardcodedUser(u: Partial<AppUser> | null | undefined): boolean {
   return false;
 }
 
+/**
+ * Strips overly large base64 dataUrl strings before writing to Firestore (1MB document limit),
+ * while keeping attachment metadata intact.
+ */
+function sanitizeCommForFirestore(comm: CommunicationEntry): CommunicationEntry {
+  if (!comm.attachments || comm.attachments.length === 0) return comm;
+  return {
+    ...comm,
+    attachments: comm.attachments.map(att => {
+      if (att.dataUrl && att.dataUrl.length > 500_000) {
+        const { dataUrl, ...rest } = att;
+        return rest;
+      }
+      return att;
+    }),
+  };
+}
+
 function deduplicateUsersList(
   list: AppUser[],
   onDuplicateFound?: (duplicateId: string, keptUser: AppUser) => void
@@ -149,8 +179,6 @@ function deduplicateUsersList(
     if (!existing) {
       byKey.set(key, rawUser);
     } else {
-      // Decide which record to keep as canonical:
-      // Prefer the record that has actually logged in (lastLogin !== 'Never') or has a Google Auth ID ('usr-g-')
       const existingLogged = existing.lastLogin && existing.lastLogin !== 'Never';
       const candidateLogged = rawUser.lastLogin && rawUser.lastLogin !== 'Never';
       const preferCandidate =
@@ -197,6 +225,9 @@ const FALLBACK_SESSION_USER: AppUser = {
 };
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const deletedManufacturerIdsRef = useRef<Set<string>>(new Set());
+  const deletedCommIdsRef = useRef<Set<string>>(new Set());
+
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.IS_AUTH);
@@ -209,7 +240,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.MANUFACTURERS);
-      return saved ? JSON.parse(saved) : INITIAL_MANUFACTURERS;
+      const parsed: Manufacturer[] = saved ? JSON.parse(saved) : INITIAL_MANUFACTURERS;
+      return [...parsed].sort(compareManufacturerById);
     } catch {
       return INITIAL_MANUFACTURERS;
     }
@@ -218,7 +250,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [communications, setCommunications] = useState<CommunicationEntry[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.COMMUNICATIONS);
-      return saved ? JSON.parse(saved) : INITIAL_COMMUNICATIONS;
+      const parsed: CommunicationEntry[] = saved ? JSON.parse(saved) : INITIAL_COMMUNICATIONS;
+      return [...parsed].sort(compareCommByEntryOrder);
     } catch {
       return INITIAL_COMMUNICATIONS;
     }
@@ -283,7 +316,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   
   // Firebase state
   const [firebaseConnected, setFirebaseConnected] = useState<boolean>(true);
-  const [firebaseProjectId, setFirebaseProjectId] = useState<string>('manufacturer-11fe2');
+  const [firebaseProjectId, setFirebaseProjectId] = useState<string>('seatidle');
 
   // Google Sheets Backup state
   const [sheetBackupConfig, setSheetBackupConfig] = useState<SheetBackupConfig | null>(() => {
@@ -295,11 +328,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   });
 
-  // Compute deterministic data fingerprint so we know when the online backup sheet is out of sync
+  const [oauthToken, setOauthToken] = useState<string | null>(null);
+  const [isAutoSyncingSheet, setIsAutoSyncingSheet] = useState<boolean>(false);
+  const [lastSheetSyncError, setLastSheetSyncError] = useState<string | null>(null);
+
+  // Compute deterministic data fingerprint across ALL fields so any change triggers Google Sheet sync
   const currentDataHash = React.useMemo(() => {
-    const mSummary = manufacturers.map(m => `${m.id}:${m.updatedAt}:${m.status}:${m.name}`).join('|');
-    const cSummary = communications.map(c => `${c.id}:${c.status}:${c.subject}:${c.keyOutcome}:${(c.chatTurns || []).length}`).join('|');
-    return `${manufacturers.length}-${communications.length}-${mSummary.length}-${cSummary.length}-${mSummary.slice(0, 60)}-${cSummary.slice(0, 60)}`;
+    return computeSpreadsheetDataHash(manufacturers, communications);
   }, [manufacturers, communications]);
 
   const saveSheetBackupConfig = (config: SheetBackupConfig | null) => {
@@ -319,6 +354,58 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // Manual or automatic trigger to push current webapp data to linked Google Sheet
+  const triggerGoogleSheetSync = async (
+    tokenOverride?: string
+  ): Promise<SheetBackupConfig | null> => {
+    if (!sheetBackupConfig?.spreadsheetId) return null;
+    const token = tokenOverride || oauthToken || (await getAccessToken());
+    if (!token) return null;
+
+    setIsAutoSyncingSheet(true);
+    setLastSheetSyncError(null);
+    try {
+      const updated = await writeBackupToGoogleSpreadsheet(
+        sheetBackupConfig.spreadsheetId,
+        token,
+        manufacturers,
+        communications,
+        sheetBackupConfig.spreadsheetTitle
+      );
+      saveSheetBackupConfig(updated);
+      return updated;
+    } catch (err: any) {
+      if (err?.status === 401 || err?.status === 403) {
+        setCachedAccessToken(null);
+      }
+      setLastSheetSyncError(err?.message || 'Failed to sync with Google Sheets');
+      throw err;
+    } finally {
+      setIsAutoSyncingSheet(false);
+    }
+  };
+
+  // Subscribe to OAuth token updates
+  useEffect(() => {
+    return subscribeAccessToken(token => {
+      setOauthToken(token);
+    });
+  }, []);
+
+  // Automatically sync to the linked Google Sheet whenever manufacturers or communications change
+  useEffect(() => {
+    if (!sheetBackupConfig?.spreadsheetId || !oauthToken) return;
+    if (sheetBackupConfig.lastSyncedHash === currentDataHash) return;
+
+    const timer = setTimeout(() => {
+      triggerGoogleSheetSync(oauthToken).catch(err => {
+        console.warn('Background Google Sheet auto-sync notice:', err?.message);
+      });
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [currentDataHash, oauthToken, sheetBackupConfig?.spreadsheetId, sheetBackupConfig?.lastSyncedHash]);
+
   useEffect(() => {
     testFirestoreConnection().then(res => {
       setFirebaseConnected(res.connected);
@@ -332,54 +419,69 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     });
 
-    // Real-time Firestore Listeners — keep database records and sync any local unsynced records to Firestore
-    let mInitialSync = false;
+    // Real-time Firestore Listeners — safely merge local and remote records so local additions are never lost
     const unsubManufacturers = onSnapshot(collection(db, 'manufacturers'), snapshot => {
       const remoteMap = new Map<string, Manufacturer>();
       snapshot.forEach(docSnap => {
-        remoteMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as Manufacturer);
+        if (!deletedManufacturerIdsRef.current.has(docSnap.id)) {
+          remoteMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as Manufacturer);
+        }
       });
 
       setManufacturers(prev => {
-        if (!mInitialSync) {
-          mInitialSync = true;
-          const merged = new Map<string, Manufacturer>(remoteMap);
-          prev.forEach(localItem => {
-            if (localItem && localItem.id && !merged.has(localItem.id)) {
-              merged.set(localItem.id, localItem);
-              setDoc(doc(db, 'manufacturers', localItem.id), localItem).catch(err =>
-                console.warn('Sync manufacturer to Firestore notice:', err.message)
-              );
-            }
-          });
-          return Array.from(merged.values());
-        }
-        return Array.from(remoteMap.values());
+        const merged = new Map<string, Manufacturer>(remoteMap);
+        prev.forEach(localItem => {
+          if (
+            localItem &&
+            localItem.id &&
+            !deletedManufacturerIdsRef.current.has(localItem.id) &&
+            !merged.has(localItem.id)
+          ) {
+            merged.set(localItem.id, localItem);
+            setDoc(doc(db, 'manufacturers', localItem.id), localItem).catch(err =>
+              console.warn('Sync manufacturer to Firestore notice:', err.message)
+            );
+          }
+        });
+        return Array.from(merged.values()).sort(compareManufacturerById);
       });
     }, err => console.warn('Firestore manufacturers sync notice:', err.message));
 
-    let cInitialSync = false;
     const unsubCommunications = onSnapshot(collection(db, 'communications'), snapshot => {
       const remoteMap = new Map<string, CommunicationEntry>();
       snapshot.forEach(docSnap => {
-        remoteMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as CommunicationEntry);
+        if (!deletedCommIdsRef.current.has(docSnap.id)) {
+          remoteMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as CommunicationEntry);
+        }
       });
 
       setCommunications(prev => {
-        if (!cInitialSync) {
-          cInitialSync = true;
-          const merged = new Map<string, CommunicationEntry>(remoteMap);
-          prev.forEach(localItem => {
-            if (localItem && localItem.id && !merged.has(localItem.id)) {
+        const merged = new Map<string, CommunicationEntry>(remoteMap);
+        prev.forEach(localItem => {
+          if (
+            localItem &&
+            localItem.id &&
+            !deletedCommIdsRef.current.has(localItem.id)
+          ) {
+            const remoteItem = merged.get(localItem.id);
+            if (!remoteItem) {
               merged.set(localItem.id, localItem);
-              setDoc(doc(db, 'communications', localItem.id), localItem).catch(err =>
+              setDoc(
+                doc(db, 'communications', localItem.id),
+                sanitizeCommForFirestore(localItem)
+              ).catch(err =>
                 console.warn('Sync communication to Firestore notice:', err.message)
               );
+            } else if (localItem.attachments && localItem.attachments.length > 0) {
+              // Preserve local attachment dataUrls if stripped in Firestore
+              merged.set(localItem.id, {
+                ...remoteItem,
+                attachments: localItem.attachments,
+              });
             }
-          });
-          return Array.from(merged.values());
-        }
-        return Array.from(remoteMap.values());
+          }
+        });
+        return Array.from(merged.values()).sort(compareCommByEntryOrder);
       });
     }, err => console.warn('Firestore communications sync notice:', err.message));
 
@@ -481,7 +583,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, []);
 
-  // Ensure currentUser stays synchronized with database users (including when duplicate IDs are merged by email)
+  // Ensure currentUser stays synchronized with database users
   useEffect(() => {
     if (users.length === 0) return;
     if (isHardcodedUser(currentUser) || currentUser.id === 'session-admin') {
@@ -518,7 +620,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                   setDoc(doc(db, 'manufacturers', item.id), item).catch(() => {});
                 }
               });
-              return Array.from(map.values());
+              return Array.from(map.values()).sort(compareManufacturerById);
             });
           }
           if (cData && Array.isArray(cData) && cData.length > 0) {
@@ -527,10 +629,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               cData.forEach((item: CommunicationEntry) => {
                 if (item && item.id && !map.has(item.id)) {
                   map.set(item.id, item);
-                  setDoc(doc(db, 'communications', item.id), item).catch(() => {});
+                  setDoc(doc(db, 'communications', item.id), sanitizeCommForFirestore(item)).catch(() => {});
                 }
               });
-              return Array.from(map.values());
+              return Array.from(map.values()).sort(compareCommByEntryOrder);
             });
           }
           if (uData && Array.isArray(uData)) {
@@ -872,8 +974,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'Permission Denied: Your current role cannot log communications.' };
     }
 
-    const existingCountForM = communications.filter(c => c.manufacturerId === data.manufacturerId).length;
-    const entryIndex = existingCountForM + 1;
+    const existingForM = communications.filter(c => c.manufacturerId === data.manufacturerId);
+    const maxKeyIdx = existingForM.reduce((max, c) => {
+      const idx = parseEntryKeyIndex(c.entryKey);
+      return !isNaN(idx) && idx > max ? idx : max;
+    }, existingForM.length);
+    const entryIndex = maxKeyIdx + 1;
     const entryKey = `${data.manufacturerId}|${entryIndex}`;
     const newId = `comm-${Date.now()}`;
     const now = new Date().toISOString();
@@ -906,7 +1012,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 ...c,
                 status: 'Reply Received',
               };
-              setDoc(doc(db, 'communications', c.id), updatedEntry, { merge: true }).catch(err => {
+              setDoc(
+                doc(db, 'communications', c.id),
+                sanitizeCommForFirestore(updatedEntry),
+                { merge: true }
+              ).catch(err => {
                 handleFirestoreError(err, OperationType.UPDATE, `communications/${c.id}`);
               });
               return updatedEntry;
@@ -915,10 +1025,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           })
         : prev;
 
-      return [newComm, ...updatedPrev];
+      return [...updatedPrev, newComm].sort(compareCommByEntryOrder);
     });
 
-    setDoc(doc(db, 'communications', newComm.id), newComm).catch(err => {
+    setDoc(doc(db, 'communications', newComm.id), sanitizeCommForFirestore(newComm)).catch(err => {
       handleFirestoreError(err, OperationType.WRITE, `communications/${newComm.id}`);
     });
 
@@ -938,16 +1048,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     setCommunications(prev =>
-      prev.map(c => {
-        if (c.id === id) {
-          const updated = { ...c, ...data };
-          setDoc(doc(db, 'communications', id), updated, { merge: true }).catch(err => {
-            handleFirestoreError(err, OperationType.UPDATE, `communications/${id}`);
-          });
-          return updated;
-        }
-        return c;
-      })
+      prev
+        .map(c => {
+          if (c.id === id) {
+            const updated = { ...c, ...data };
+            setDoc(
+              doc(db, 'communications', id),
+              sanitizeCommForFirestore(updated),
+              { merge: true }
+            ).catch(err => {
+              handleFirestoreError(err, OperationType.UPDATE, `communications/${id}`);
+            });
+            return updated;
+          }
+          return c;
+        })
+        .sort(compareCommByEntryOrder)
     );
 
     addAuditLog('UPDATE_COMMUNICATION', 'COMMUNICATION', `Updated communication record ${id}`, id);
@@ -959,6 +1075,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'Permission Denied: Only Manager or Admin can delete communication records.' };
     }
 
+    deletedCommIdsRef.current.add(id);
     const target = communications.find(c => c.id === id);
     setCommunications(prev => prev.filter(c => c.id !== id));
     deleteDoc(doc(db, 'communications', id)).catch(err => {
@@ -1113,11 +1230,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return;
     }
     manufacturers.forEach(m => {
+      deletedManufacturerIdsRef.current.add(m.id);
       deleteDoc(doc(db, 'manufacturers', m.id)).catch(err =>
         console.warn('Firestore delete manufacturer error:', err)
       );
     });
     communications.forEach(c => {
+      deletedCommIdsRef.current.add(c.id);
       deleteDoc(doc(db, 'communications', c.id)).catch(err =>
         console.warn('Firestore delete communication error:', err)
       );
@@ -1133,23 +1252,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addAuditLog('CLEAR_DATABASE', 'DATA', 'Cleared all manufacturers and communications records from database');
   };
 
-  // CSV Export & Import matching spreadsheet structure
+  // CSV Export & Import matching spreadsheet structure in strict entry order
   const exportCsvData = (): string => {
+    const sortedM = [...manufacturers].sort(compareManufacturerById);
+    const sortedC = [...communications].sort(compareCommByEntryOrder);
+
     let csv = 'CENTRAL INPUT • Exported Database\n';
     csv += 'A. MANUFACTURER LIST (one row per manufacturer)\n';
     csv += 'Manufacturer ID,Manufacturer,Website,Contact Email / Chat Portal,Product(s) of Interest,Notes,Record Status\n';
-    manufacturers.forEach(m => {
+    sortedM.forEach(m => {
       csv += `"${m.id}","${m.name.replace(/"/g, '""')}","${m.website}","${m.contactPortal.replace(/"/g, '""')}","${m.productsOfInterest.replace(/"/g, '""')}","${m.notes.replace(/"/g, '""')}","${m.status}"\n`;
     });
 
     csv += '\nB. COMMUNICATION HISTORY (one row per email / call / chat)\n';
-    csv += 'Date,Manufacturer,Thread Selection,Thread ID (auto),Channel / Direction,Subject / Purpose,Key Outcome / Latest Update,Current Status,Next Action,Follow-up Date,Chat / Thread Doc,Documents Received,Information Received,Manufacturer ID (auto),Entry key (helper)\n';
-    communications.forEach(c => {
-      const docs = (c.documentsReceived || []).join('; ');
-      csv += `"${c.date}","${c.manufacturerName}","${c.threadSelection}","${c.threadId}","${c.channel}","${(c.subject || '').replace(/"/g, '""')}","${(c.keyOutcome || '').replace(/"/g, '""')}","${c.status}","${(c.nextAction || '').replace(/"/g, '""')}","${c.followUpDate || ''}","${c.threadDoc || ''}","${docs.replace(/"/g, '""')}","${(c.informationReceived || '').replace(/"/g, '""')}","${c.manufacturerId}","${c.entryKey || ''}"\n`;
+    csv += 'Date,Manufacturer,Thread Selection,Thread ID (auto),Channel / Direction,Subject / Purpose,Key Outcome / Latest Update,Current Status,Next Action,Follow-up Date,Chat / Thread Doc,Documents Received,Information Received,Live Chat / Message Transcript,Manufacturer ID (auto),Entry key (helper)\n';
+    sortedC.forEach(c => {
+      const docs = formatDocumentsCell(c);
+      const transcript = formatChatTranscriptCell(c);
+      csv += `"${c.date}","${c.manufacturerName}","${c.threadSelection}","${c.threadId}","${c.channel}","${(c.subject || '').replace(/"/g, '""')}","${(c.keyOutcome || '').replace(/"/g, '""')}","${c.status}","${(c.nextAction || '').replace(/"/g, '""')}","${c.followUpDate || ''}","${c.threadDoc || ''}","${docs.replace(/"/g, '""')}","${(c.informationReceived || '').replace(/"/g, '""')}","${transcript.replace(/"/g, '""')}","${c.manufacturerId}","${c.entryKey || ''}"\n`;
     });
 
-    addAuditLog('DATA_EXPORT', 'DATA', `Exported full database to CSV (${manufacturers.length} manufacturers, ${communications.length} records)`);
+    addAuditLog('DATA_EXPORT', 'DATA', `Exported full database to CSV (${sortedM.length} manufacturers, ${sortedC.length} records)`);
     return csv;
   };
 
@@ -1164,6 +1287,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       let inSectionB = false;
       const parsedManufacturers: Manufacturer[] = [];
       const parsedComms: CommunicationEntry[] = [];
+      const baseTs = Date.now();
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -1180,7 +1304,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           continue;
         }
 
-        // Standard robust CSV line parser handling commas inside quotes
         const parseRow = (text: string): string[] => {
           const result: string[] = [];
           let current = '';
@@ -1217,8 +1340,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               productsOfInterest: cols[4] || '',
               notes: cols[5] || '',
               status: (cols[6] === 'Removed' ? 'Removed' : 'Active') as ManufacturerStatus,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
+              createdAt: new Date(baseTs + i).toISOString(),
+              updatedAt: new Date(baseTs + i).toISOString(),
             });
           }
         } else if (inSectionB) {
@@ -1238,11 +1361,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const threadDoc = cols[10] || '';
             const docsStr = cols[11] || '';
             const info = cols[12] || '';
-            const mId = cols[13] || '';
-            const entryKey = cols[14] || '';
+            const mId = cols.length >= 16 ? cols[14] || '' : cols[13] || '';
+            const entryKey = cols.length >= 16 ? cols[15] || '' : cols[14] || '';
 
             parsedComms.push({
-              id: `comm-import-${Date.now()}-${i}`,
+              id: `comm-import-${baseTs + i}-${i}`,
               date,
               manufacturerName: mName,
               threadSelection: tSel,
@@ -1259,24 +1382,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               manufacturerId: mId,
               entryKey,
               createdBy: currentUser.name,
-              createdAt: new Date().toISOString(),
+              createdAt: new Date(baseTs + i * 10).toISOString(),
             });
           }
         }
       }
 
       if (parsedManufacturers.length > 0) {
-        setManufacturers(parsedManufacturers);
+        setManufacturers(parsedManufacturers.sort(compareManufacturerById));
         parsedManufacturers.forEach(m => {
+          deletedManufacturerIdsRef.current.delete(m.id);
           setDoc(doc(db, 'manufacturers', m.id), m).catch(err =>
             handleFirestoreError(err, OperationType.WRITE, `manufacturers/${m.id}`)
           );
         });
       }
       if (parsedComms.length > 0) {
-        setCommunications(parsedComms);
+        setCommunications(parsedComms.sort(compareCommByEntryOrder));
         parsedComms.forEach(c => {
-          setDoc(doc(db, 'communications', c.id), c).catch(err =>
+          deletedCommIdsRef.current.delete(c.id);
+          setDoc(doc(db, 'communications', c.id), sanitizeCommForFirestore(c)).catch(err =>
             handleFirestoreError(err, OperationType.WRITE, `communications/${c.id}`)
           );
         });
@@ -1309,9 +1434,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return;
     }
     manufacturers.forEach(m => {
+      deletedManufacturerIdsRef.current.add(m.id);
       deleteDoc(doc(db, 'manufacturers', m.id)).catch(() => {});
     });
     communications.forEach(c => {
+      deletedCommIdsRef.current.add(c.id);
       deleteDoc(doc(db, 'communications', c.id)).catch(() => {});
     });
     auditLogs.forEach(a => {
@@ -1372,6 +1499,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sheetBackupConfig,
         saveSheetBackupConfig,
         currentDataHash,
+        isAutoSyncingSheet,
+        lastSheetSyncError,
+        triggerGoogleSheetSync,
       }}
     >
       {children}

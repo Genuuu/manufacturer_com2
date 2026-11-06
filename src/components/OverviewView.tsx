@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { CommunicationEntry } from '../types';
+import { compareCommByEntryOrder } from '../utils/spreadsheetSync';
 import {
   BarChart3,
   TrendingUp,
@@ -81,7 +82,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   });
 
   const threads = Array.from(threadMap.entries()).map(([tid, msgs]) => {
-    const sorted = [...msgs].sort((a, b) => (a.date > b.date ? 1 : -1));
+    const sorted = [...msgs].sort(compareCommByEntryOrder);
     return {
       threadId: tid,
       messages: sorted,
@@ -501,7 +502,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               const pendingCount = mComms.filter(
                 c => c.status !== 'Completed' && c.status !== 'Reply Received'
               ).length;
-              const latestComm = [...mComms].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+              const sortedMComms = [...mComms].sort(compareCommByEntryOrder);
+              const latestComm = sortedMComms[sortedMComms.length - 1];
 
               return (
                 <div

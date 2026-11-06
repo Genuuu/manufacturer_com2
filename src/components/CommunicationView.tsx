@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { ThreadConversationModal } from './ThreadConversationModal';
 import { SummaryMetricsPanel } from './SummaryMetricsPanel';
+import { compareCommByEntryOrder } from '../utils/spreadsheetSync';
 
 interface CommunicationViewProps {
   onOpenCommModal: (entry?: CommunicationEntry) => void;
@@ -149,7 +150,7 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
       }
 
       return true;
-    });
+    }).sort(compareCommByEntryOrder);
   }, [
     communications,
     selectedManufacturer,
@@ -159,12 +160,12 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
     searchQuery,
   ]);
 
-  // Group filtered messages into Thread Groups
+  // Group filtered messages into Thread Groups (messages ordered strictly by entry sequence)
   const threadGroups = useMemo(() => {
     const groupsMap = new Map<string, CommunicationEntry[]>();
 
-    // Sort all comms chronologically
-    const sorted = [...filteredComms].sort((a, b) => (a.date > b.date ? 1 : a.date < b.date ? -1 : 0));
+    // Sort all comms in exact data-entry order (1st entered -> 2nd entered -> 3rd entered)
+    const sorted = [...filteredComms].sort(compareCommByEntryOrder);
 
     sorted.forEach(c => {
       const tid = c.threadId || 'T001';
@@ -175,11 +176,12 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
     });
 
     return Array.from(groupsMap.entries()).map(([threadId, msgs]) => {
-      const firstMsg = msgs[0];
-      const latestMsg = msgs[msgs.length - 1];
+      const orderedMsgs = [...msgs].sort(compareCommByEntryOrder);
+      const firstMsg = orderedMsgs[0];
+      const latestMsg = orderedMsgs[orderedMsgs.length - 1];
       return {
         threadId,
-        messages: msgs,
+        messages: orderedMsgs,
         firstMsg,
         latestMsg,
         manufacturerName: firstMsg.manufacturerName,
@@ -188,7 +190,7 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
         status: latestMsg.status,
         date: latestMsg.date,
       };
-    }).sort((a, b) => (a.date < b.date ? 1 : -1)); // Sort threads newest activity first
+    }).sort((a, b) => compareCommByEntryOrder(b.latestMsg, a.latestMsg)); // Sort threads with most recently entered message first
   }, [filteredComms]);
 
   // Check if any filter is active

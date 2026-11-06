@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useApp, SheetBackupConfig } from '../context/AppContext';
+import { useApp } from '../context/AppContext';
+import {
+  buildSpreadsheetTabs,
+  writeBackupToGoogleSpreadsheet,
+} from '../utils/spreadsheetSync';
 import {
   initAuth,
   googleSignIn,
@@ -36,6 +40,9 @@ export const SpreadsheetView: React.FC = () => {
     sheetBackupConfig,
     saveSheetBackupConfig,
     currentDataHash,
+    isAutoSyncingSheet,
+    lastSheetSyncError,
+    triggerGoogleSheetSync,
   } = useApp();
 
   const [activeSheet, setActiveSheet] = useState<WorksheetTab>('central');
@@ -92,222 +99,13 @@ export const SpreadsheetView: React.FC = () => {
     return sheetBackupConfig.lastSyncedHash !== currentDataHash;
   }, [sheetBackupConfig, currentDataHash]);
 
-  // Format chat turns for a single cell
-  const formatChatTranscriptCell = (comm: (typeof communications)[0]): string => {
-    if (comm.chatTurns && comm.chatTurns.length > 0) {
-      return comm.chatTurns
-        .map(
-          (t, i) =>
-            `[${i + 1}. ${t.sender === 'us' ? 'OUR TEAM' : 'SUPPLIER'}${
-              t.timestamp ? ` (${t.timestamp})` : ''
-            }]: ${t.message}`
-        )
-        .join(' | ');
-    }
-    return '';
-  };
+  // Build all 3 tabs using the shared entry-ordered builder (includes all recent details: nextAction, attachments, chatTurns, etc.)
+  const { centralRows, manufacturerRows, communicationRows } = useMemo(
+    () => buildSpreadsheetTabs(manufacturers, communications),
+    [manufacturers, communications]
+  );
 
-  // Build 2D rows for each worksheet tab
-  const centralRows = useMemo((): string[][] => {
-    const rows: string[][] = [];
-    rows.push([
-      'CENTRAL INPUT • Live Online Backup Spreadsheet',
-      `Last Updated: ${new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC`,
-      `Suppliers: ${manufacturers.length}`,
-      `Communications: ${communications.length}`,
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ]);
-    rows.push([
-      'A. MANUFACTURER LIST (one row per manufacturer)',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ]);
-    rows.push([
-      'Manufacturer ID',
-      'Manufacturer',
-      'Website',
-      'Contact Email / Chat Portal',
-      'Product(s) of Interest',
-      'Notes',
-      'Record Status',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ]);
 
-    manufacturers.forEach(m => {
-      rows.push([
-        m.id,
-        m.name,
-        m.website || '',
-        m.contactPortal || '',
-        m.productsOfInterest || '',
-        m.notes || '',
-        m.status,
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-      ]);
-    });
-
-    rows.push(new Array(15).fill(''));
-    rows.push([
-      'B. COMMUNICATION HISTORY (one row per email / call / chat)',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
-    ]);
-    rows.push([
-      'Date',
-      'Manufacturer',
-      'Thread Selection',
-      'Thread ID (auto)',
-      'Channel / Direction',
-      'Subject / Purpose',
-      'Key Outcome / Summary',
-      'Current Status',
-      'Follow-up Date',
-      'Chat / Thread Doc',
-      'Documents Received',
-      'Technical Info Received',
-      'Live Chat / Sent Transcript',
-      'Manufacturer ID (auto)',
-      'Entry key (helper)',
-    ]);
-
-    communications.forEach(c => {
-      rows.push([
-        c.date,
-        c.manufacturerName,
-        c.threadSelection || '',
-        c.threadId || '',
-        c.channel,
-        c.subject || '',
-        c.keyOutcome || '',
-        c.status,
-        c.followUpDate || '',
-        c.threadDoc || '',
-        (c.documentsReceived || []).join('; '),
-        c.informationReceived || '',
-        formatChatTranscriptCell(c),
-        c.manufacturerId,
-        c.entryKey || '',
-      ]);
-    });
-
-    return rows;
-  }, [manufacturers, communications]);
-
-  const manufacturerRows = useMemo((): string[][] => {
-    const rows: string[][] = [
-      [
-        'Manufacturer ID',
-        'Manufacturer Name',
-        'Website',
-        'Contact Email / Chat Portal',
-        'Product(s) of Interest',
-        'Engineering & Sourcing Notes',
-        'Status',
-        'Last Updated',
-      ],
-    ];
-    manufacturers.forEach(m => {
-      rows.push([
-        m.id,
-        m.name,
-        m.website || '',
-        m.contactPortal || '',
-        m.productsOfInterest || '',
-        m.notes || '',
-        m.status,
-        m.updatedAt ? m.updatedAt.replace('T', ' ').substring(0, 16) : '',
-      ]);
-    });
-    return rows;
-  }, [manufacturers]);
-
-  const communicationRows = useMemo((): string[][] => {
-    const rows: string[][] = [
-      [
-        'Date',
-        'Manufacturer ID',
-        'Manufacturer',
-        'Thread ID',
-        'Channel / Direction',
-        'Subject / Purpose',
-        'Key Outcome / Summary',
-        'Current Status',
-        'Follow-up Date',
-        'Technical Information Received',
-        'Live Chat / Message Transcript',
-        'Documents Received',
-        'Logged By',
-        'Entry Key',
-      ],
-    ];
-    communications.forEach(c => {
-      rows.push([
-        c.date,
-        c.manufacturerId,
-        c.manufacturerName,
-        c.threadId || '',
-        c.channel,
-        c.subject || '',
-        c.keyOutcome || '',
-        c.status,
-        c.followUpDate || '',
-        c.informationReceived || '',
-        formatChatTranscriptCell(c),
-        (c.documentsReceived || []).join('; '),
-        c.createdBy || '',
-        c.entryKey || '',
-      ]);
-    });
-    return rows;
-  }, [communications]);
 
   const activeRows = useMemo(() => {
     const base =
@@ -348,10 +146,29 @@ export const SpreadsheetView: React.FC = () => {
       if (result?.accessToken) {
         setAccessToken(result.accessToken);
         setNeedsAuth(false);
-        setStatusBanner({
-          type: 'success',
-          text: `Connected to Google Sheets as ${result.user.email}. You can now create or sync your online backup spreadsheet.`,
-        });
+
+        if (sheetBackupConfig) {
+          setIsSyncingSheet(true);
+          try {
+            const updated = await triggerGoogleSheetSync(result.accessToken);
+            setStatusBanner({
+              type: 'success',
+              text: `Signed in as ${result.user.email} and automatically synced all ${manufacturers.length} suppliers and ${communications.length} communication records to "${updated?.spreadsheetTitle || sheetBackupConfig.spreadsheetTitle}".`,
+            });
+          } catch (syncErr: any) {
+            setStatusBanner({
+              type: 'error',
+              text: syncErr?.message || 'Signed in, but could not sync to Google Sheet.',
+            });
+          } finally {
+            setIsSyncingSheet(false);
+          }
+        } else {
+          setStatusBanner({
+            type: 'success',
+            text: `Connected to Google Sheets as ${result.user.email}. You can now create or link your online backup spreadsheet.`,
+          });
+        }
       }
     } catch (err: any) {
       setStatusBanner({
@@ -369,153 +186,22 @@ export const SpreadsheetView: React.FC = () => {
     token: string,
     existingTitle?: string
   ) => {
-    // 1. Fetch spreadsheet metadata first (never hardcode/assume tab names)
-    const metaRes = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    );
-
-    if (!metaRes.ok) {
-      if (metaRes.status === 401 || metaRes.status === 403) {
-        setNeedsAuth(true);
-        throw new Error('Google Sheets session expired or lacks permission. Please sign in with Google again.');
-      }
-      const errBody = await metaRes.json().catch(() => ({}));
-      throw new Error(errBody?.error?.message || `Failed to read spreadsheet (${metaRes.status})`);
-    }
-
-    const metaData = await metaRes.json();
-    const spreadsheetTitle = metaData.properties?.title || existingTitle || 'Manufacturer Comms Backup';
-    const spreadsheetUrl =
-      metaData.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-
-    const existingSheets: { title: string; sheetId: number }[] = (metaData.sheets || []).map(
-      (s: any) => ({
-        title: s.properties?.title || '',
-        sheetId: s.properties?.sheetId ?? 0,
-      })
-    );
-
-    const desiredTabs = ['CENTRAL INPUT', 'Manufacturers', 'Communications'];
-    const requests: any[] = [];
-
-    // If the first default tab is "Sheet1" and "CENTRAL INPUT" doesn't exist yet, rename it to "CENTRAL INPUT"
-    const hasCentral = existingSheets.some(s => s.title === 'CENTRAL INPUT');
-    if (!hasCentral && existingSheets.length > 0 && existingSheets[0].title === 'Sheet1') {
-      requests.push({
-        updateSheetProperties: {
-          properties: {
-            sheetId: existingSheets[0].sheetId,
-            title: 'CENTRAL INPUT',
-            gridProperties: { frozenRowCount: 3 },
-          },
-          fields: 'title,gridProperties.frozenRowCount',
-        },
-      });
-      existingSheets[0].title = 'CENTRAL INPUT';
-    }
-
-    // Add any missing tabs
-    desiredTabs.forEach(tabName => {
-      if (!existingSheets.some(s => s.title === tabName)) {
-        requests.push({
-          addSheet: {
-            properties: {
-              title: tabName,
-              gridProperties: {
-                frozenRowCount: tabName === 'CENTRAL INPUT' ? 3 : 1,
-              },
-            },
-          },
-        });
-      }
-    });
-
-    if (requests.length > 0) {
-      const batchRes = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ requests }),
-        }
+    try {
+      const updatedConfig = await writeBackupToGoogleSpreadsheet(
+        spreadsheetId,
+        token,
+        manufacturers,
+        communications,
+        existingTitle
       );
-      if (!batchRes.ok) {
-        const errData = await batchRes.json().catch(() => ({}));
-        throw new Error(errData?.error?.message || 'Failed to prepare worksheet tabs');
+      saveSheetBackupConfig(updatedConfig);
+      return updatedConfig;
+    } catch (err: any) {
+      if (err?.status === 401 || err?.status === 403) {
+        setNeedsAuth(true);
       }
+      throw err;
     }
-
-    // 2. Clear existing values in the 3 tabs before writing fresh backup snapshot
-    await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchClear`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ranges: [
-            "'CENTRAL INPUT'!A1:Z2000",
-            "'Manufacturers'!A1:Z1000",
-            "'Communications'!A1:Z2000",
-          ],
-        }),
-      }
-    );
-
-    // 3. Batch update all 3 tabs with live webapp data
-    const updateRes = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          valueInputOption: 'USER_ENTERED',
-          data: [
-            {
-              range: "'CENTRAL INPUT'!A1",
-              values: centralRows,
-            },
-            {
-              range: "'Manufacturers'!A1",
-              values: manufacturerRows,
-            },
-            {
-              range: "'Communications'!A1",
-              values: communicationRows,
-            },
-          ],
-        }),
-      }
-    );
-
-    if (!updateRes.ok) {
-      const errData = await updateRes.json().catch(() => ({}));
-      throw new Error(errData?.error?.message || 'Failed to write backup data to Google Sheets');
-    }
-
-    const updatedConfig: SheetBackupConfig = {
-      spreadsheetId,
-      spreadsheetUrl,
-      spreadsheetTitle,
-      lastSyncedAt: new Date().toISOString(),
-      lastSyncedManufacturerCount: manufacturers.length,
-      lastSyncedCommCount: communications.length,
-      lastSyncedHash: currentDataHash,
-    };
-
-    saveSheetBackupConfig(updatedConfig);
-    return updatedConfig;
   };
 
   // Create a brand new Google Sheet and populate it with the backup
@@ -580,7 +266,7 @@ export const SpreadsheetView: React.FC = () => {
 
       setStatusBanner({
         type: 'success',
-        text: `Created and synced online backup "${savedConfig.spreadsheetTitle}" (${manufacturers.length} suppliers, ${communications.length} logs).`,
+        text: `Created and synced online backup "${savedConfig.spreadsheetTitle}" (${manufacturers.length} suppliers, ${communications.length} logs). Any new details added in the webapp will now sync automatically!`,
       });
     } catch (err: any) {
       setStatusBanner({
@@ -592,7 +278,7 @@ export const SpreadsheetView: React.FC = () => {
     }
   };
 
-  // Sync to existing linked Google Sheet (called ONLY after explicit user confirmation in modal)
+  // Sync to existing linked Google Sheet
   const handleConfirmedSyncToGoogleSheet = async () => {
     if (!sheetBackupConfig) return;
     setConfirmSyncModalOpen(false);
@@ -618,7 +304,7 @@ export const SpreadsheetView: React.FC = () => {
       );
       setStatusBanner({
         type: 'success',
-        text: `Updated "${updated.spreadsheetTitle}" with ${manufacturers.length} manufacturers and ${communications.length} communication records.`,
+        text: `Updated "${updated.spreadsheetTitle}" with all ${manufacturers.length} manufacturers and ${communications.length} communication records in entry order.`,
       });
     } catch (err: any) {
       setStatusBanner({
@@ -640,7 +326,7 @@ export const SpreadsheetView: React.FC = () => {
     const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     const extractedId = match ? match[1] : raw;
 
-    saveSheetBackupConfig({
+    const initialConfig = {
       spreadsheetId: extractedId,
       spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${extractedId}/edit`,
       spreadsheetTitle: 'Linked Google Sheet Backup',
@@ -648,14 +334,35 @@ export const SpreadsheetView: React.FC = () => {
       lastSyncedManufacturerCount: 0,
       lastSyncedCommCount: 0,
       lastSyncedHash: '',
-    });
+    };
 
+    saveSheetBackupConfig(initialConfig);
     setLinkInputUrl('');
     setShowLinkInput(false);
-    setStatusBanner({
-      type: 'info',
-      text: 'Spreadsheet linked! Click "Sync Backup Now" to confirm and push current webapp data to this Google Sheet.',
-    });
+
+    const token = await getAccessToken();
+    if (token) {
+      setIsSyncingSheet(true);
+      try {
+        const updated = await writeDataToSpreadsheet(extractedId, token, initialConfig.spreadsheetTitle);
+        setStatusBanner({
+          type: 'success',
+          text: `Linked and synced "${updated.spreadsheetTitle}" with all ${manufacturers.length} manufacturers and ${communications.length} communication records!`,
+        });
+      } catch (err: any) {
+        setStatusBanner({
+          type: 'error',
+          text: err?.message || 'Spreadsheet linked, but initial sync failed. Click "Sync Backup Now" to retry.',
+        });
+      } finally {
+        setIsSyncingSheet(false);
+      }
+    } else {
+      setStatusBanner({
+        type: 'info',
+        text: 'Spreadsheet linked! Sign in with Google to automatically push current webapp data to this Google Sheet.',
+      });
+    }
   };
 
   const handleCopyTsv = () => {
@@ -842,7 +549,12 @@ export const SpreadsheetView: React.FC = () => {
                       <span className="text-xs font-bold text-slate-900">
                         {sheetBackupConfig.spreadsheetTitle}
                       </span>
-                      {isOutOfSync ? (
+                      {isSyncingSheet || isAutoSyncingSheet ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300">
+                          <RefreshCw className="h-3 w-3 animate-spin" />
+                          <span>Syncing to Google Sheet...</span>
+                        </span>
+                      ) : isOutOfSync ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
                           <RefreshCw className="h-3 w-3 animate-spin" />
                           <span>Webapp Updated — Needs Sync</span>
@@ -850,7 +562,7 @@ export const SpreadsheetView: React.FC = () => {
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                           <CheckCircle2 className="h-3 w-3" />
-                          <span>Up to Date</span>
+                          <span>Auto-Sync Active • Up to Date</span>
                         </span>
                       )}
                     </div>
@@ -866,6 +578,11 @@ export const SpreadsheetView: React.FC = () => {
                       <span>
                         • {manufacturers.length} Suppliers & {communications.length} Communications
                       </span>
+                      {lastSheetSyncError && (
+                        <span className="text-rose-600 font-semibold">
+                          • Error: {lastSheetSyncError}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -886,20 +603,20 @@ export const SpreadsheetView: React.FC = () => {
                   <>
                     <button
                       type="button"
-                      onClick={() => setConfirmSyncModalOpen(true)}
-                      disabled={isSyncingSheet}
+                      onClick={handleConfirmedSyncToGoogleSheet}
+                      disabled={isSyncingSheet || isAutoSyncingSheet}
                       className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50 ${
                         isOutOfSync
                           ? 'bg-amber-600 hover:bg-amber-700 ring-2 ring-amber-400/40'
                           : 'bg-emerald-600 hover:bg-emerald-700'
                       }`}
                     >
-                      <CloudUpload className={`h-4 w-4 ${isSyncingSheet ? 'animate-bounce' : ''}`} />
+                      <CloudUpload className={`h-4 w-4 ${isSyncingSheet || isAutoSyncingSheet ? 'animate-bounce' : ''}`} />
                       <span>
-                        {isSyncingSheet
+                        {isSyncingSheet || isAutoSyncingSheet
                           ? 'Syncing to Google Sheets...'
                           : isOutOfSync
-                          ? 'Sync Webapp Updates to Sheet'
+                          ? 'Sync Webapp Updates Now'
                           : 'Sync Backup Now'}
                       </span>
                     </button>
@@ -1048,7 +765,9 @@ export const SpreadsheetView: React.FC = () => {
                   row[0]?.startsWith('A. MANUFACTURER LIST') ||
                   row[0]?.startsWith('B. COMMUNICATION HISTORY');
                 const isColumnHeader =
-                  row[0] === 'Manufacturer ID' || row[0] === 'Date';
+                  row[0] === 'Manufacturer ID' ||
+                  row[0] === 'Date' ||
+                  row[0] === 'Entry #';
 
                 return (
                   <tr
