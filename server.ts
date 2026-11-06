@@ -128,9 +128,9 @@ Extract and fill these exact fields:
 5. subject: The true purpose and intent of sending or receiving this mail (e.g. "Requesting quotation and MOQ for LTE module", "Confirming sample dispatch and tracking details", "Negotiating unit pricing and lead times"), formulated by deeply analyzing the mail content and thread history. Do NOT just copy the literal email title or subject header.
 6. keyOutcome: Core outcome or response summary (1-2 clear sentences summarizing what was agreed, quoted, or answered, analyzed by thoroughly evaluating both the mail and the thread history).
 7. status: One of: "Completed", "Awaiting Reply", "Information Received", "Pending Review", "Action Required".
-8. nextAction: Suggested follow-up step or next action for the engineering/procurement team based on the thread flow.
-9. followUpDate: Suggested follow-up date in YYYY-MM-DD format if mentioned or implied (or empty string if none).
-10. informationReceived: Detailed technical notes, quotation prices (unit costs, EXW pricing, MOQ, lead times), EVK/samples, part numbers, or technical specs (latest update / details updated by analyzing the mail and thread).
+8. nextAction: Leave empty string ("") as next action is removed.
+9. followUpDate: Always leave empty string ("") as follow-up date must not be auto-filled by AI.
+10. informationReceived: If this is a received/inbound mail, extract ONLY clean technical specifications, pricing breakdowns, MOQ, lead times, quote numbers, or part numbers received from the vendor (do NOT paste the raw email text, boilerplate greetings, or signatures). If this is a sent mail (outbound), leave this empty ("").
 11. inboundContent: If vendor sent text, extract what the vendor stated/quoted.
 12. outboundReply: If our team sent or replied to the vendor, extract what our team asked or replied.
 13. documentsReceived: List of filenames, datasheets, or PDF manuals mentioned in the text.`;

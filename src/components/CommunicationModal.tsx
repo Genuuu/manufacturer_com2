@@ -371,9 +371,9 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       subject: extractedSubject,
       keyOutcome: extractedOutcome,
       status: detectedStatus,
-      nextAction: suggestedNextAction,
-      followUpDate: extractedFollowUp,
-      informationReceived: bodyLines.join('\n'),
+      nextAction: '',
+      followUpDate: '',
+      informationReceived: detectedType === 'sent' ? '' : keySentences.join('\n') || bodyLines.slice(0, 3).join('\n'),
       inboundContent: '',
       outboundReply: '',
       documentsReceived: uniqueDocs,
@@ -471,14 +471,20 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       setKeyOutcome(outcomeText);
 
       if (data.status) setStatus(data.status as CommStatus);
-      if (data.nextAction) setNextAction(data.nextAction);
-      if (data.followUpDate) setFollowUpDate(data.followUpDate);
 
-      let infoText = data.informationReceived || '';
-      if (data.inboundContent && data.outboundReply && !infoText.includes(data.inboundContent)) {
-        infoText = `📥 Vendor Statement:\n${data.inboundContent}\n\n📤 Our Response:\n${data.outboundReply}\n\n${infoText}`;
+      // User requested: do not fill follow-up date by AI.
+      setFollowUpDate('');
+
+      // User requested: sent mail does not require information received.
+      if (entryType === 'sent') {
+        setInformationReceived('');
+      } else {
+        let infoText = data.informationReceived || '';
+        if (data.inboundContent && data.outboundReply && !infoText.includes(data.inboundContent)) {
+          infoText = `📥 Vendor Statement:\n${data.inboundContent}\n\n📤 Our Response:\n${data.outboundReply}\n\n${infoText}`;
+        }
+        setInformationReceived(infoText);
       }
-      setInformationReceived(infoText);
 
       setFullEmailText(rawText);
 
@@ -820,14 +826,20 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
             />
           </div>
 
-          {/* Key Outcome */}
+          {/* Key Outcome / Summary */}
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Key Outcome / Latest Update</label>
+            <label className="block font-semibold text-slate-700 mb-1">
+              {entryType === 'sent' ? 'Summary' : 'Key Outcome / Latest Update'}
+            </label>
             <textarea
               rows={2}
               value={keyOutcome}
               onChange={e => setKeyOutcome(e.target.value)}
-              placeholder="Summarize the key outcome, quote details, or response..."
+              placeholder={
+                entryType === 'sent'
+                  ? 'Summarize the sent email content...'
+                  : 'Summarize the key outcome, quote details, or response...'
+              }
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
             />
           </div>
@@ -860,31 +872,21 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
             </div>
           </div>
 
-          {/* Next Action */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">Next Action</label>
-            <input
-              type="text"
-              value={nextAction}
-              onChange={e => setNextAction(e.target.value)}
-              placeholder="Enter next follow-up action..."
-              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
-            />
-          </div>
-
-          {/* Information Received / Detailed notes */}
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">
-              Information Received / Technical Specifications
-            </label>
-            <textarea
-              rows={3}
-              value={informationReceived}
-              onChange={e => setInformationReceived(e.target.value)}
-              placeholder="Enter technical details, pricing breakdowns, part numbers, compatibility notes..."
-              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-sans leading-relaxed"
-            />
-          </div>
+          {/* Information Received / Technical Specifications (Only for Received / Inbound Mails) */}
+          {entryType !== 'sent' && (
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Technical Specifications & Information Received (Vendor Details)
+              </label>
+              <textarea
+                rows={3}
+                value={informationReceived}
+                onChange={e => setInformationReceived(e.target.value)}
+                placeholder="Extract clean technical specs, pricing breakdowns, part numbers, MOQ, lead times..."
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-sans leading-relaxed"
+              />
+            </div>
+          )}
 
           {/* Attached Files & Attachments Section */}
           <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3.5">
