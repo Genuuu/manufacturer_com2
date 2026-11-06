@@ -125,12 +125,12 @@ Extract and fill these exact fields:
 2. matchedManufacturerId: Matched ID from the registered manufacturers list if it matches (e.g. M001, M002), or empty string if not found.
 3. channel: Must align with the user's pre-selected channel ("${channel || 'Email - Received'}") or as appropriate.
 4. detectedType: Must align with the user's pre-selected direction ("${entryType || 'received'}").
-5. subject: Concise summary title for this interaction (under 12 words).
-6. keyOutcome: Core outcome or response summary (1-2 clear sentences summarizing what was agreed, quoted, or answered in the context of the thread).
+5. subject: The true purpose and intent of sending or receiving this mail (e.g. "Requesting quotation and MOQ for LTE module", "Confirming sample dispatch and tracking details", "Negotiating unit pricing and lead times"), formulated by deeply analyzing the mail content and thread history. Do NOT just copy the literal email title or subject header.
+6. keyOutcome: Core outcome or response summary (1-2 clear sentences summarizing what was agreed, quoted, or answered, analyzed by thoroughly evaluating both the mail and the thread history).
 7. status: One of: "Completed", "Awaiting Reply", "Information Received", "Pending Review", "Action Required".
 8. nextAction: Suggested follow-up step or next action for the engineering/procurement team based on the thread flow.
 9. followUpDate: Suggested follow-up date in YYYY-MM-DD format if mentioned or implied (or empty string if none).
-10. informationReceived: Detailed technical notes, quotation prices (e.g. unit costs, EXW pricing, MOQ, lead times), EVK/samples, part numbers, or technical specs mentioned in this new message or thread context.
+10. informationReceived: Detailed technical notes, quotation prices (unit costs, EXW pricing, MOQ, lead times), EVK/samples, part numbers, or technical specs (latest update / details updated by analyzing the mail and thread).
 11. inboundContent: If vendor sent text, extract what the vendor stated/quoted.
 12. outboundReply: If our team sent or replied to the vendor, extract what our team asked or replied.
 13. documentsReceived: List of filenames, datasheets, or PDF manuals mentioned in the text.`;

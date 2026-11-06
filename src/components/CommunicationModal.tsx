@@ -302,11 +302,16 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       detectedChannel = 'Email - Sent';
     }
 
-    // 3. Extract Subject
+    // 3. Extract Subject / Purpose
     let extractedSubject = '';
     const subjectLineMatch = clean.match(/^subject:\s*(.+)$/im);
     if (subjectLineMatch && subjectLineMatch[1]) {
-      extractedSubject = subjectLineMatch[1].trim();
+      const rawSub = subjectLineMatch[1].trim();
+      if (/^(re|fwd|fw):/i.test(rawSub) || rawSub.length < 8) {
+        extractedSubject = `Discussion / Update regarding ${manufacturerName || 'Supplier'} (${rawSub})`;
+      } else {
+        extractedSubject = rawSub;
+      }
     } else {
       const contentLine = lines.find(
         l =>
@@ -315,8 +320,8 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
           l.length > 10
       );
       extractedSubject = contentLine
-        ? contentLine.slice(0, 85) + (contentLine.length > 85 ? '...' : '')
-        : `${manufacturerName || 'Supplier'} Communication Update`;
+        ? `Purpose: ${contentLine.slice(0, 75)}`
+        : `Communication & Technical Exchange with ${manufacturerName || 'Supplier'}`;
     }
 
     // 4. Extract Key Outcome & Technical Information
