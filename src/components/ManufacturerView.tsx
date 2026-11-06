@@ -83,7 +83,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
       <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-2xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center font-bold shadow-2xs">
+            <div className="h-10 w-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center font-bold shadow-2xs shrink-0">
               <Building2 className="h-5 w-5" />
             </div>
             <div>
@@ -99,12 +99,12 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               onClick={() => onOpenManufacturerModal()}
               disabled={!hasPermission('canCreateManufacturer')}
               title={!hasPermission('canCreateManufacturer') ? 'Requires Manager or Admin' : 'Add new supplier'}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-xs disabled:opacity-40"
+              className="w-full sm:w-auto justify-center inline-flex items-center gap-1.5 px-3.5 py-2.5 sm:py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-xs disabled:opacity-40 cursor-pointer"
             >
               <Plus className="h-4 w-4" />
               <span>Add Supplier</span>
@@ -174,7 +174,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+              className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -189,7 +189,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as any)}
-            className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500"
+            className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
           >
             <option value="ALL">All Statuses ({manufacturers.length})</option>
             <option value="Active">Active Only ({manufacturers.filter(m => m.status === 'Active').length})</option>
@@ -201,21 +201,134 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
       {/* Main Grid: Suppliers Table + Optional Inspected Side Drawer */}
       <div className={`grid grid-cols-1 ${inspectManufacturerId ? 'lg:grid-cols-5' : ''} gap-4`}>
         
-        {/* Suppliers Table */}
-        <div className={`bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs ${
+        {/* Suppliers Card List (Mobile) + Table (Desktop) */}
+        <div className={`bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs ${
           inspectManufacturerId ? 'lg:col-span-3' : 'w-full'
         }`}>
-          <div className="overflow-x-auto">
+          {/* Mobile & Tablet Vendor Card Grid (lg:hidden) */}
+          <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:gap-3 md:p-3 divide-slate-100">
+            {filteredManufacturers.length === 0 ? (
+              <div className="md:col-span-2 py-8 px-4 text-center text-slate-400 text-xs">
+                No vendors matched your search or status filter.
+              </div>
+            ) : (
+              filteredManufacturers.map(m => {
+                const commCount = communications.filter(c => c.manufacturerId === m.id).length;
+                const isSelected = inspectManufacturerId === m.id;
+
+                return (
+                  <div
+                    key={m.id}
+                    onClick={() => setInspectManufacturerId(isSelected ? null : m.id)}
+                    className={`p-3.5 md:rounded-xl md:border md:border-slate-200 space-y-2.5 text-xs transition-colors cursor-pointer ${
+                      isSelected ? 'bg-indigo-50/40 md:border-indigo-300' : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                            {m.id}
+                          </span>
+                          <span className="font-bold text-sm text-slate-900">{m.name}</span>
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
+                            m.status === 'Active'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-slate-100 text-slate-600 border-slate-200'
+                          }`}>
+                            {m.status}
+                          </span>
+                        </div>
+                        {m.website && (
+                          <a
+                            href={m.website.startsWith('http') ? m.website : `https://${m.website}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="text-[11px] text-indigo-600 hover:underline inline-flex items-center gap-1 mt-0.5 font-mono truncate max-w-[240px]"
+                          >
+                            <span>{m.website.replace(/^https?:\/\//, '')}</span>
+                            <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                          </a>
+                        )}
+                      </div>
+
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-100 text-slate-700 font-mono font-bold text-[10px] shrink-0">
+                        <MessageSquare className="h-3 w-3 text-indigo-600" />
+                        {commCount}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="text-slate-700 font-medium">
+                        {m.productsOfInterest || <span className="text-slate-400 italic">General fabrication & sourcing</span>}
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        Portal: <span className="text-slate-700">{m.contactPortal || 'Website / Direct Inquiry'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={() => setInspectManufacturerId(isSelected ? null : m.id)}
+                        className="text-[11px] font-semibold text-indigo-600 px-2.5 py-1.5 rounded-lg bg-indigo-50/80 hover:bg-indigo-100 transition-colors cursor-pointer"
+                      >
+                        {isSelected ? 'Hide History' : `Inspect (${commCount})`}
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => onOpenCommModalWithManufacturer(m.id)}
+                          disabled={!hasPermission('canLogCommunication')}
+                          className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1 disabled:opacity-30 cursor-pointer"
+                        >
+                          <Plus className="h-3 w-3" />
+                          <span>Log Comm</span>
+                        </button>
+                        <button
+                          onClick={() => onOpenManufacturerModal(m)}
+                          disabled={!hasPermission('canEditManufacturer')}
+                          className="p-1.5 text-slate-600 hover:text-indigo-600 rounded-lg border border-slate-200 bg-slate-50 disabled:opacity-30 cursor-pointer"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        {m.status === 'Active' ? (
+                          <button
+                            onClick={() => handleStatusToggle(m)}
+                            disabled={!hasPermission('canDeleteManufacturer')}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg border border-slate-200 bg-slate-50 disabled:opacity-30 cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleStatusToggle(m)}
+                            disabled={!hasPermission('canEditManufacturer')}
+                            className="p-1.5 text-emerald-600 rounded-lg border border-emerald-200 bg-emerald-50 cursor-pointer"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop Suppliers Table (hidden lg:block) */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
-                  <th className="py-3 px-3 w-16">ID</th>
-                  <th className="py-3 px-3 w-40">Vendor Name</th>
+                <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
+                  <th className="py-3 px-3.5 w-16">ID</th>
+                  <th className="py-3 px-3 w-44">Vendor Name</th>
                   <th className="py-3 px-3 w-44">Contact Portal</th>
                   <th className="py-3 px-3">Products of Interest</th>
                   <th className="py-3 px-3 w-20 text-center">Comms</th>
-                  <th className="py-3 px-3 w-20">Status</th>
-                  <th className="py-3 px-3 w-24 text-right">Actions</th>
+                  <th className="py-3 px-3 w-24">Status</th>
+                  <th className="py-3 px-3.5 w-28 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -239,7 +352,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
                         }`}
                       >
                         {/* ID */}
-                        <td className="py-3 px-3 font-mono font-bold text-slate-700">
+                        <td className="py-3 px-3.5 font-mono font-bold text-indigo-700">
                           {m.id}
                         </td>
 
@@ -248,13 +361,13 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
                           <div className="font-bold text-slate-900">{m.name}</div>
                           {m.website && (
                             <a
-                              href={m.website}
+                              href={m.website.startsWith('http') ? m.website : `https://${m.website}`}
                               target="_blank"
                               rel="noreferrer"
                               onClick={e => e.stopPropagation()}
-                              className="text-[11px] text-indigo-600 hover:underline inline-flex items-center gap-1 mt-0.5"
+                              className="text-[11px] text-indigo-600 hover:underline inline-flex items-center gap-1 mt-0.5 font-mono"
                             >
-                              <span>Website</span>
+                              <span>{m.website.replace(/^https?:\/\//, '')}</span>
                               <ExternalLink className="h-2.5 w-2.5" />
                             </a>
                           )}
@@ -262,12 +375,16 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
 
                         {/* Contact */}
                         <td className="py-3 px-3 text-slate-600">
-                          <div className="line-clamp-2">{m.contactPortal}</div>
+                          <div className="line-clamp-2">
+                            {m.contactPortal || <span className="text-slate-400">Website / Direct Inquiry</span>}
+                          </div>
                         </td>
 
                         {/* Products */}
                         <td className="py-3 px-3">
-                          <div className="font-medium text-slate-800 line-clamp-1">{m.productsOfInterest}</div>
+                          <div className="font-medium text-slate-800 line-clamp-1">
+                            {m.productsOfInterest || <span className="text-slate-400 italic font-normal">General fabrication & sourcing</span>}
+                          </div>
                           {m.notes && <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{m.notes}</p>}
                         </td>
 
@@ -281,7 +398,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
 
                         {/* Status */}
                         <td className="py-3 px-3">
-                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border ${
                             m.status === 'Active'
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : 'bg-slate-100 text-slate-600 border-slate-200'
@@ -291,13 +408,13 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
                         </td>
 
                         {/* Actions */}
-                        <td className="py-3 px-3 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                        <td className="py-3 px-3.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => onOpenCommModalWithManufacturer(m.id)}
                               disabled={!hasPermission('canLogCommunication')}
                               title="Log communication"
-                              className="p-1 text-slate-500 hover:text-indigo-600 rounded disabled:opacity-30"
+                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg disabled:opacity-30 cursor-pointer transition-colors"
                             >
                               <MessageSquare className="h-3.5 w-3.5" />
                             </button>
@@ -305,7 +422,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
                               onClick={() => onOpenManufacturerModal(m)}
                               disabled={!hasPermission('canEditManufacturer')}
                               title="Edit details"
-                              className="p-1 text-slate-500 hover:text-indigo-600 rounded disabled:opacity-30"
+                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg disabled:opacity-30 cursor-pointer transition-colors"
                             >
                               <Edit2 className="h-3.5 w-3.5" />
                             </button>
@@ -314,7 +431,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
                                 onClick={() => handleStatusToggle(m)}
                                 disabled={!hasPermission('canDeleteManufacturer')}
                                 title="Remove supplier (preserves history)"
-                                className="p-1 text-slate-400 hover:text-rose-600 rounded disabled:opacity-30"
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg disabled:opacity-30 cursor-pointer transition-colors"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -323,7 +440,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
                                 onClick={() => handleStatusToggle(m)}
                                 disabled={!hasPermission('canEditManufacturer')}
                                 title="Restore to Active"
-                                className="p-1 text-emerald-600 rounded"
+                                className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg cursor-pointer transition-colors"
                               >
                                 <RotateCcw className="h-3.5 w-3.5" />
                               </button>
@@ -341,16 +458,18 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
 
         {/* Side Panel: Inspected Supplier History */}
         {inspectedM && (
-          <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-4 animate-in fade-in">
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs space-y-4 animate-in fade-in">
             <div className="flex items-start justify-between pb-3 border-b border-slate-100">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                  <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">
                     {inspectedM.id}
                   </span>
                   <h3 className="font-bold text-sm text-slate-900">{inspectedM.name}</h3>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">{inspectedM.productsOfInterest}</p>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  {inspectedM.productsOfInterest || 'General fabrication & sourcing'}
+                </p>
               </div>
               <button
                 onClick={() => setInspectManufacturerId(null)}

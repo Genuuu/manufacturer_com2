@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from 'firebase/auth';
 import {
   collection,
   doc,
@@ -26,13 +26,24 @@ import {
   DEFAULT_ROLE_PERMISSIONS,
   INITIAL_AUDIT_LOGS,
 } from '../data/initialData';
-import { testFirestoreConnection, auth, googleProvider, db, handleFirestoreError, OperationType } from '../firebase';
+import { testFirestoreConnection, auth, googleProvider, db, handleFirestoreError, OperationType, setCachedAccessToken } from '../firebase';
 
 export type NavTab = 
   | 'overview'
   | 'communications'
   | 'manufacturers'
+  | 'spreadsheet'
   | 'permissions';
+
+export interface SheetBackupConfig {
+  spreadsheetId: string;
+  spreadsheetUrl: string;
+  spreadsheetTitle: string;
+  lastSyncedAt: string;
+  lastSyncedManufacturerCount: number;
+  lastSyncedCommCount: number;
+  lastSyncedHash: string;
+}
 
 interface AppContextType {
   manufacturers: Manufacturer[];
@@ -86,6 +97,11 @@ interface AppContextType {
   importCsvData: (csvContent: string) => { success: boolean; count: { manufacturers: number; communications: number }; error?: string };
   resetDatabase: () => void;
   clearAllData: () => void;
+
+  // Online Google Sheets Backup
+  sheetBackupConfig: SheetBackupConfig | null;
+  saveSheetBackupConfig: (config: SheetBackupConfig | null) => void;
+  currentDataHash: string;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -98,6 +114,7 @@ const STORAGE_KEYS = {
   PERMISSIONS: 'fabricateops_permissions_v1',
   AUDIT: 'fabricateops_audit_logs_v1',
   IS_AUTH: 'fabricateops_is_auth_v1',
+  SHEET_BACKUP: 'fabricateops_sheet_backup_v1',
 };
 
 const HARDCODED_USER_IDS = new Set(['usr-admin', 'usr-admin-gk', 'usr-1', 'usr-2', 'usr-3', 'usr-4']);
@@ -114,6 +131,58 @@ function isHardcodedUser(u: Partial<AppUser> | null | undefined): boolean {
   if (u.id && HARDCODED_USER_IDS.has(u.id)) return true;
   if (u.email && HARDCODED_USER_EMAILS.has(u.email.toLowerCase())) return true;
   return false;
+}
+
+function deduplicateUsersList(
+  list: AppUser[],
+  onDuplicateFound?: (duplicateId: string, keptUser: AppUser) => void
+): AppUser[] {
+  const byKey = new Map<string, AppUser>();
+
+  for (const rawUser of list) {
+    if (!rawUser || isHardcodedUser(rawUser)) continue;
+    const emailKey = (rawUser.email || '').trim().toLowerCase();
+    const nameKey = (rawUser.name || '').trim().toLowerCase();
+    const key = emailKey || `name:${nameKey}` || rawUser.id;
+
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, rawUser);
+    } else {
+      // Decide which record to keep as canonical:
+      // Prefer the record that has actually logged in (lastLogin !== 'Never') or has a Google Auth ID ('usr-g-')
+      const existingLogged = existing.lastLogin && existing.lastLogin !== 'Never';
+      const candidateLogged = rawUser.lastLogin && rawUser.lastLogin !== 'Never';
+      const preferCandidate =
+        (!existingLogged && candidateLogged) ||
+        (!existing.id.startsWith('usr-g-') && rawUser.id.startsWith('usr-g-'));
+
+      const primary = preferCandidate ? rawUser : existing;
+      const secondary = preferCandidate ? existing : rawUser;
+
+      const mergedUser: AppUser = {
+        ...secondary,
+        ...primary,
+        id: primary.id,
+        name: primary.name || secondary.name,
+        email: primary.email || secondary.email,
+        department: primary.department || secondary.department,
+        role: primary.role || secondary.role,
+        avatar: primary.avatar || secondary.avatar,
+        lastLogin:
+          primary.lastLogin && primary.lastLogin !== 'Never'
+            ? primary.lastLogin
+            : secondary.lastLogin || 'Never',
+      };
+
+      byKey.set(key, mergedUser);
+      if (secondary.id !== primary.id && onDuplicateFound) {
+        onDuplicateFound(secondary.id, mergedUser);
+      }
+    }
+  }
+
+  return Array.from(byKey.values());
 }
 
 const FALLBACK_SESSION_USER: AppUser = {
@@ -160,7 +229,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const saved = localStorage.getItem(STORAGE_KEYS.USERS);
       if (saved) {
         const parsed: AppUser[] = JSON.parse(saved);
-        return Array.isArray(parsed) ? parsed.filter(u => !isHardcodedUser(u)) : [];
+        return Array.isArray(parsed) ? deduplicateUsersList(parsed) : [];
       }
       return [];
     } catch {
@@ -215,6 +284,40 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Firebase state
   const [firebaseConnected, setFirebaseConnected] = useState<boolean>(true);
   const [firebaseProjectId, setFirebaseProjectId] = useState<string>('manufacturer-11fe2');
+
+  // Google Sheets Backup state
+  const [sheetBackupConfig, setSheetBackupConfig] = useState<SheetBackupConfig | null>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.SHEET_BACKUP);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Compute deterministic data fingerprint so we know when the online backup sheet is out of sync
+  const currentDataHash = React.useMemo(() => {
+    const mSummary = manufacturers.map(m => `${m.id}:${m.updatedAt}:${m.status}:${m.name}`).join('|');
+    const cSummary = communications.map(c => `${c.id}:${c.status}:${c.subject}:${c.keyOutcome}:${(c.chatTurns || []).length}`).join('|');
+    return `${manufacturers.length}-${communications.length}-${mSummary.length}-${cSummary.length}-${mSummary.slice(0, 60)}-${cSummary.slice(0, 60)}`;
+  }, [manufacturers, communications]);
+
+  const saveSheetBackupConfig = (config: SheetBackupConfig | null) => {
+    setSheetBackupConfig(config);
+    try {
+      if (config) {
+        localStorage.setItem(STORAGE_KEYS.SHEET_BACKUP, JSON.stringify(config));
+        setDoc(doc(db, 'settings', 'googleSheetBackup'), config).catch(err =>
+          console.warn('Firestore sheetBackup write notice:', err.message)
+        );
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.SHEET_BACKUP);
+        deleteDoc(doc(db, 'settings', 'googleSheetBackup')).catch(() => {});
+      }
+    } catch (e) {
+      console.warn('Sheet backup config save error:', e);
+    }
+  };
 
   useEffect(() => {
     testFirestoreConnection().then(res => {
@@ -282,32 +385,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     let uInitialSync = false;
     const unsubUsers = onSnapshot(collection(db, 'users'), snapshot => {
-      const remoteMap = new Map<string, AppUser>();
+      const remoteList: AppUser[] = [];
       snapshot.forEach(docSnap => {
         const u = { id: docSnap.id, ...docSnap.data() } as AppUser;
         if (isHardcodedUser(u)) {
           deleteDoc(doc(db, 'users', docSnap.id)).catch(() => {});
         } else {
-          remoteMap.set(docSnap.id, u);
+          remoteList.push(u);
         }
       });
 
+      const dedupedRemote = deduplicateUsersList(remoteList, (dupId, keptUser) => {
+        deleteDoc(doc(db, 'users', dupId)).catch(() => {});
+        setDoc(doc(db, 'users', keptUser.id), keptUser, { merge: true }).catch(() => {});
+      });
+
       setUsers(prev => {
-        const cleanPrev = prev.filter(u => !isHardcodedUser(u));
+        const cleanPrev = deduplicateUsersList(prev);
         if (!uInitialSync) {
           uInitialSync = true;
-          const merged = new Map<string, AppUser>(remoteMap);
-          cleanPrev.forEach(localItem => {
-            if (localItem && localItem.id && !merged.has(localItem.id)) {
-              merged.set(localItem.id, localItem);
-              setDoc(doc(db, 'users', localItem.id), localItem).catch(err =>
+          const combined = deduplicateUsersList(
+            [...dedupedRemote, ...cleanPrev],
+            (dupId, keptUser) => {
+              deleteDoc(doc(db, 'users', dupId)).catch(() => {});
+              setDoc(doc(db, 'users', keptUser.id), keptUser, { merge: true }).catch(() => {});
+            }
+          );
+          const remoteIds = new Set(dedupedRemote.map(r => r.id));
+          combined.forEach(item => {
+            if (!remoteIds.has(item.id)) {
+              setDoc(doc(db, 'users', item.id), item).catch(err =>
                 console.warn('Sync user to Firestore notice:', err.message)
               );
             }
           });
-          return Array.from(merged.values());
+          return combined;
         }
-        return Array.from(remoteMap.values());
+        return dedupedRemote;
       });
     }, err => console.warn('Firestore users sync notice:', err.message));
 
@@ -346,6 +460,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }, err => console.warn('Firestore permissions sync notice:', err.message));
 
+    const unsubSheetBackup = onSnapshot(doc(db, 'settings', 'googleSheetBackup'), docSnap => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as SheetBackupConfig;
+        setSheetBackupConfig(data);
+        try {
+          localStorage.setItem(STORAGE_KEYS.SHEET_BACKUP, JSON.stringify(data));
+        } catch {}
+      }
+    }, err => console.warn('Firestore sheetBackup sync notice:', err.message));
+
     return () => {
       unsubscribeAuth();
       unsubManufacturers();
@@ -353,13 +477,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       unsubUsers();
       unsubAudit();
       unsubPermissions();
+      unsubSheetBackup();
     };
   }, []);
 
-  // Ensure currentUser stays synchronized with database users
+  // Ensure currentUser stays synchronized with database users (including when duplicate IDs are merged by email)
   useEffect(() => {
-    if (users.length > 0 && (isHardcodedUser(currentUser) || currentUser.id === 'session-admin')) {
+    if (users.length === 0) return;
+    if (isHardcodedUser(currentUser) || currentUser.id === 'session-admin') {
       setCurrentUser(users[0]);
+      return;
+    }
+    const exactMatch = users.find(u => u.id === currentUser.id);
+    if (!exactMatch && currentUser.email) {
+      const emailMatch = users.find(
+        u => u.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase()
+      );
+      if (emailMatch) {
+        setCurrentUser(emailMatch);
+      }
     }
   }, [users, currentUser]);
 
@@ -398,17 +534,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             });
           }
           if (uData && Array.isArray(uData)) {
-            const validUsers = uData.filter((u: AppUser) => !isHardcodedUser(u));
+            const validUsers = deduplicateUsersList(uData);
             if (validUsers.length > 0) {
               setUsers(prev => {
-                const map = new Map(prev.map(item => [item.id, item]));
-                validUsers.forEach((item: AppUser) => {
-                  if (item && item.id && !map.has(item.id)) {
-                    map.set(item.id, item);
-                    setDoc(doc(db, 'users', item.id), item).catch(() => {});
+                const combined = deduplicateUsersList(
+                  [...prev, ...validUsers],
+                  (dupId, keptUser) => {
+                    deleteDoc(doc(db, 'users', dupId)).catch(() => {});
+                    setDoc(doc(db, 'users', keptUser.id), keptUser, { merge: true }).catch(() => {});
                   }
-                });
-                return Array.from(map.values());
+                );
+                return combined;
               });
             }
           }
@@ -527,9 +663,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const loginWithGoogle = async (): Promise<{ success: boolean; message: string }> => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        setCachedAccessToken(credential.accessToken);
+      }
       const googleUser = result.user;
+      const normalizedEmail = (googleUser.email || '').trim().toLowerCase();
 
-      let matched: AppUser | undefined = users.find(u => u.email.toLowerCase() === (googleUser.email || '').toLowerCase());
+      // Also check Firestore directly in case local state hasn't loaded yet
+      let remoteUsers: AppUser[] = [];
+      try {
+        const snap = await getDocs(collection(db, 'users'));
+        snap.forEach(d => remoteUsers.push({ id: d.id, ...d.data() } as AppUser));
+      } catch {}
+
+      const allKnownUsers = deduplicateUsersList([...users, ...remoteUsers]);
+      let matched: AppUser | undefined = allKnownUsers.find(
+        u => u.email.trim().toLowerCase() === normalizedEmail
+      );
+
       if (!matched) {
         const initials = (googleUser.displayName || 'G U')
           .split(' ')
@@ -548,8 +700,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           avatar: initials || 'GU',
           lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16),
         };
-
-        setUsers(prev => [...prev, matched!]);
       } else {
         matched = {
           ...matched,
@@ -558,6 +708,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
 
       const activeUser: AppUser = matched;
+      setUsers(prev =>
+        deduplicateUsersList([...prev, activeUser], dupId => {
+          deleteDoc(doc(db, 'users', dupId)).catch(() => {});
+        })
+      );
       setDoc(doc(db, 'users', activeUser.id), activeUser, { merge: true }).catch(err => {
         handleFirestoreError(err, OperationType.WRITE, `users/${activeUser.id}`);
       });
@@ -586,6 +741,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch (e) {
       console.warn('SignOut warning:', e);
     }
+    setCachedAccessToken(null);
     setIsAuthenticated(false);
     localStorage.removeItem(STORAGE_KEYS.IS_AUTH);
   };
@@ -843,6 +999,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'Permission Denied: Only Admins can manage team members.' };
     }
 
+    const normalizedEmail = userData.email.trim().toLowerCase();
+    const existingByEmail = users.find(u => u.email.trim().toLowerCase() === normalizedEmail);
+    if (existingByEmail) {
+      const updatedExisting: AppUser = {
+        ...existingByEmail,
+        ...userData,
+      };
+      setUsers(prev => prev.map(u => (u.id === existingByEmail.id ? updatedExisting : u)));
+      setDoc(doc(db, 'users', existingByEmail.id), updatedExisting, { merge: true }).catch(err => {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${existingByEmail.id}`);
+      });
+      return {
+        success: true,
+        message: `Updated existing member ${updatedExisting.name} (${updatedExisting.email})`,
+        user: updatedExisting,
+      };
+    }
+
     const initials = userData.name
       .split(' ')
       .filter(Boolean)
@@ -858,7 +1032,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       lastLogin: 'Never',
     };
 
-    setUsers(prev => [...prev, newUser]);
+    setUsers(prev => deduplicateUsersList([...prev, newUser]));
     setDoc(doc(db, 'users', newUser.id), newUser).catch(err => {
       handleFirestoreError(err, OperationType.WRITE, `users/${newUser.id}`);
     });
@@ -1195,6 +1369,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         importCsvData,
         resetDatabase,
         clearAllData,
+        sheetBackupConfig,
+        saveSheetBackupConfig,
+        currentDataHash,
       }}
     >
       {children}

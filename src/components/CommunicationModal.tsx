@@ -776,27 +776,29 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 overflow-hidden">
-      <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 max-h-[88vh] mb-14 sm:mb-0 flex flex-col">
+    <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden sm:my-auto animate-in fade-in zoom-in-95 max-h-[92dvh] sm:max-h-[88vh] flex flex-col">
+        {/* Mobile Grab Handle */}
+        <div className="sm:hidden w-10 h-1 bg-slate-300 rounded-full mx-auto mt-2 shrink-0" />
         
         {/* Header */}
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+        <div className="p-3.5 sm:p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="h-7 w-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
               <MessageSquare className="h-4 w-4" />
             </div>
-            <div>
-              <h2 className="font-bold text-sm text-slate-900">
+            <div className="min-w-0">
+              <h2 className="font-bold text-sm text-slate-900 truncate">
                 {isEditing ? 'Edit Communication Entry' : 'Log Supplier Communication'}
               </h2>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-slate-500 truncate">
                 Record emails, live chats, quotations, and technical deliverables
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60"
+            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-200/60 shrink-0"
           >
             <X className="h-4 w-4" />
           </button>
@@ -804,19 +806,19 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
 
         {/* AI Auto-Fill Toggle Bar */}
         {!isEditing && (
-          <div className="p-3 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+          <div className="px-3.5 py-2.5 sm:p-3 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
             <div className="flex items-center gap-1.5 font-bold text-indigo-950">
-              <Wand2 className="h-4 w-4 text-indigo-600 animate-pulse" />
-              <span>Pre-Enter Details & AI Auto-Fill</span>
+              <Wand2 className="h-4 w-4 text-indigo-600 animate-pulse shrink-0" />
+              <span className="text-[11px] sm:text-xs">Pre-Enter & AI Auto-Fill</span>
             </div>
 
             <button
               type="button"
               onClick={() => setShowAiBox(!showAiBox)}
-              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold text-[11px] sm:text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
             >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>{showAiBox ? 'Hide AI Auto-Fill Box' : '✨ Paste Email / Chat (Uses Pre-Entered Details)'}</span>
+              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+              <span>{showAiBox ? 'Hide AI Box' : '✨ Paste Email / Chat'}</span>
             </button>
           </div>
         )}
@@ -901,67 +903,73 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
         )}
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs flex-1 min-h-0 overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-3.5 sm:p-5 space-y-4 text-xs flex-1 min-h-0 overflow-y-auto">
           
           {/* Pre-Entered Details Section: Mode, Date, Manufacturer, Thread, Channel */}
-          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3.5">
-            <div className="flex items-center justify-between">
+          <div className="p-3 sm:p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between gap-2">
               <label className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                <span>1. Pre-Enter Mail / Chat Context & Direction</span>
+                <span>1. Pre-Enter Context & Direction</span>
               </label>
-              <span className="text-[11px] text-slate-500">Select these before AI parsing</span>
+              <span className="text-[10px] sm:text-[11px] text-slate-500">Select before AI parsing</span>
             </div>
 
-            {/* Received Mail vs Sent Email vs Live Chat (Simultaneous Sent & Received) */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* Received Mail vs Sent Email vs Live Chat (3-Column Responsive Grid) */}
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2.5">
               <button
                 type="button"
                 onClick={() => handleEntryTypeChange('received')}
-                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
+                className={`p-2 sm:p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
                   entryType === 'received'
                     ? 'bg-blue-50 border-blue-500 text-blue-900 ring-2 ring-blue-500/20 font-bold'
                     : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <div className="flex items-center gap-1.5 text-xs font-bold">
-                  <span>📩 Received Mail</span>
+                <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold leading-tight">
+                  <span>📩 Received</span>
                 </div>
-                <span className="text-[10px] text-slate-500 font-normal leading-tight">Inbound message from supplier</span>
+                <span className="text-[9px] sm:text-[10px] text-slate-500 font-normal leading-tight hidden xs:inline">
+                  Inbound from supplier
+                </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleEntryTypeChange('sent')}
-                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
+                className={`p-2 sm:p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
                   entryType === 'sent'
                     ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-500/20 font-bold'
                     : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <div className="flex items-center gap-1.5 text-xs font-bold">
+                <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold leading-tight">
                   <span>📤 Sent Email</span>
                 </div>
-                <span className="text-[10px] text-slate-500 font-normal leading-tight">Outbound message to supplier</span>
+                <span className="text-[9px] sm:text-[10px] text-slate-500 font-normal leading-tight hidden xs:inline">
+                  Outbound to supplier
+                </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleEntryTypeChange('live_chat')}
-                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
+                className={`p-2 sm:p-2.5 rounded-xl border text-left transition-all flex flex-col gap-0.5 cursor-pointer ${
                   entryType === 'live_chat'
                     ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500/20 font-bold'
                     : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <div className="flex items-center gap-1.5 text-xs font-bold">
-                  <span>💬 Live Chat (Multi-Turn)</span>
+                <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold leading-tight">
+                  <span>💬 Live Chat</span>
                 </div>
-                <span className="text-[10px] text-slate-500 font-normal leading-tight">Log multiple back-and-forth chat messages</span>
+                <span className="text-[9px] sm:text-[10px] text-slate-500 font-normal leading-tight hidden xs:inline">
+                  Multi-turn chat log
+                </span>
               </button>
             </div>
 
             {/* Row 1: Date & Manufacturer */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Date</label>
                 <input
@@ -993,7 +1001,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
             </div>
 
             {/* Row 2: Thread & Channel / Direction */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3.5">
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
                   Thread
@@ -1067,20 +1075,20 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
                 </div>
 
                 {/* Conversation Turns List */}
-                <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1">
+                <div className="space-y-2.5 max-h-[300px] sm:max-h-[340px] overflow-y-auto pr-1">
                   {chatTurns.map((turn, idx) => {
                     const isUs = turn.sender === 'us';
                     return (
                       <div
                         key={turn.id}
-                        className={`p-3 rounded-xl border transition-all ${
+                        className={`p-2.5 sm:p-3 rounded-xl border transition-all ${
                           isUs
                             ? 'bg-indigo-50/70 border-indigo-200 ml-0 sm:mr-6'
                             : 'bg-white border-emerald-300 ml-0 sm:ml-6 shadow-2xs'
                         }`}
                       >
-                        <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                          <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
                             <span className="text-[10px] font-mono font-bold text-slate-400">
                               #{idx + 1}
                             </span>
@@ -1115,8 +1123,8 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
                               type="text"
                               value={turn.timestamp || ''}
                               onChange={e => handleUpdateChatTurn(turn.id, { timestamp: e.target.value })}
-                              placeholder="Time (optional, e.g. 14:05)"
-                              className="w-36 px-2 py-0.5 text-[10px] font-mono bg-white border border-slate-200 rounded text-slate-700 placeholder:text-slate-400"
+                              placeholder="Time (optional)"
+                              className="w-28 sm:w-36 px-2 py-0.5 text-[10px] font-mono bg-white border border-slate-200 rounded text-slate-700 placeholder:text-slate-400"
                             />
                           </div>
 
@@ -1124,7 +1132,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleRemoveChatTurn(turn.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
                               title="Remove this message turn"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -1149,22 +1157,22 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
                 </div>
 
                 {/* Quick Add Turn Buttons */}
-                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-emerald-200/80">
+                <div className="grid grid-cols-1 xs:grid-cols-2 sm:flex items-center gap-2 pt-1 border-t border-emerald-200/80">
                   <button
                     type="button"
                     onClick={() => handleAddChatTurn('us')}
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                    className="w-full sm:w-auto justify-center px-3 py-2 sm:py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="h-3.5 w-3.5 shrink-0" />
                     <span>+ Add Our Message (Sent)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleAddChatTurn('supplier')}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                    className="w-full sm:w-auto justify-center px-3 py-2 sm:py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="h-3.5 w-3.5 shrink-0" />
                     <span>+ Add Supplier Reply (Received)</span>
                   </button>
                 </div>
@@ -1445,21 +1453,21 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
           </div>
 
           {/* Footer Controls */}
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
-            <div className="text-[11px] text-slate-400 font-mono">
+          <div className="pt-3 border-t border-slate-200 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-2">
+            <div className="text-[11px] text-slate-400 font-mono hidden sm:block">
               Auto Thread Key: <code>{manufacturerId}|...</code>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-50"
+                className="flex-1 sm:flex-initial min-h-[42px] px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 shadow-xs"
+                className="flex-1 sm:flex-initial min-h-[42px] px-5 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 shadow-xs"
               >
                 {isEditing ? 'Save Changes' : 'Record Communication'}
               </button>

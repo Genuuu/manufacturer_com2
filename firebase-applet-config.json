@@ -1,9 +1,11 @@
 {
-  "apiKey": "AIzaSyAou5n1JFPW1J4wMndqKTIPAdNA_zyL_hM",
-  "authDomain": "manufacturer-11fe2.firebaseapp.com",
-  "projectId": "manufacturer-11fe2",
-  "storageBucket": "manufacturer-11fe2.firebasestorage.app",
-  "messagingSenderId": "926842245160",
-  "appId": "1:926842245160:web:b320c9c8171c1d5c13e51d",
-  "measurementId": "G-XM21EQ27PJ"
+  "projectId": "seatidle",
+  "appId": "1:237670859440:web:d433248e5bdbf628e4f175",
+  "apiKey": "AIzaSyBk3BIR_LkgwkIhnAG4eU24b5_V5lASb0c",
+  "authDomain": "seatidle.firebaseapp.com",
+  "storageBucket": "seatidle.firebasestorage.app",
+  "messagingSenderId": "237670859440",
+  "measurementId": "",
+  "oAuthClientId": "237670859440-1g8ikd3brga9depuns191ook7sd0q1np.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

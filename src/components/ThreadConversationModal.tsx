@@ -94,35 +94,35 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 overflow-hidden">
-      <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 max-h-[88vh] mb-14 sm:mb-0 flex flex-col">
+    <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden sm:my-auto animate-in fade-in zoom-in-95 max-h-[92dvh] sm:max-h-[88vh] flex flex-col">
         
         {/* Modal Header (shrink-0) */}
-        <div className="p-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-indigo-600 flex items-center justify-center font-bold text-white shadow-xs">
-              <MessageSquare className="h-5 w-5" />
+        <div className="p-3.5 sm:p-4 bg-slate-900 text-white flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-indigo-600 flex items-center justify-center font-bold text-white shadow-xs shrink-0">
+              <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs font-bold bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <span className="font-mono text-[11px] sm:text-xs font-bold bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded">
                   Thread {threadId}
                 </span>
-                <span className="font-bold text-sm text-white">
+                <span className="font-bold text-xs sm:text-sm text-white truncate">
                   {firstMsg?.manufacturerName || 'Manufacturer'}
                 </span>
-                <span className="text-slate-400">·</span>
-                <span className="text-xs text-slate-300 font-mono">
-                  {threadComms.length} {threadComms.length === 1 ? 'Message' : 'Messages'}
+                <span className="text-slate-400 hidden xs:inline">·</span>
+                <span className="text-[11px] sm:text-xs text-slate-300 font-mono">
+                  {threadComms.length} {threadComms.length === 1 ? 'Msg' : 'Msgs'}
                 </span>
               </div>
-              <h3 className="text-xs text-slate-300 line-clamp-1 mt-0.5">
+              <h3 className="text-[11px] sm:text-xs text-slate-300 line-clamp-1 mt-0.5">
                 {firstMsg?.subject || 'Communication Thread History'}
               </h3>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={onClose}
               className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
@@ -134,25 +134,25 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
 
         {/* Supplier Banner Summary (shrink-0) */}
         {manufacturer && (
-          <div className="px-5 py-2.5 bg-slate-100/80 border-b border-slate-200 flex items-center justify-between text-xs shrink-0">
-            <div className="flex items-center gap-3 text-slate-700">
-              <span><strong>Supplier ID:</strong> {manufacturer.id}</span>
+          <div className="px-3.5 sm:px-5 py-2.5 bg-slate-100/80 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-slate-700 min-w-0">
+              <span><strong>ID:</strong> {manufacturer.id}</span>
               <span>·</span>
-              <span><strong>Products:</strong> {manufacturer.productsOfInterest}</span>
+              <span className="truncate max-w-[200px] sm:max-w-md"><strong>Products:</strong> {manufacturer.productsOfInterest}</span>
             </div>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border shrink-0 ${
               latestMsg?.status === 'Completed'
                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 : 'bg-amber-50 text-amber-700 border-amber-200'
             }`}>
-              Thread Status: {latestMsg?.status || 'Active'}
+              Status: {latestMsg?.status || 'Active'}
             </span>
           </div>
         )}
 
         {/* Message Timeline Stream (flex-1 min-h-0 overflow-y-auto) */}
-        <div className="p-6 bg-slate-50/60 flex-1 min-h-0 overflow-y-auto space-y-6">
-          <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
+        <div className="p-3.5 sm:p-6 bg-slate-50/60 flex-1 min-h-0 overflow-y-auto space-y-4 sm:space-y-6">
+          <div className="relative pl-5 sm:pl-6 space-y-4 sm:space-y-6 before:absolute before:left-2 sm:before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
             
             {threadComms.map((comm, idx) => {
               const isSent = comm.channel.toLowerCase().includes('sent');
@@ -166,7 +166,7 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
                   
                   {/* Timeline Bullet Node */}
                   <div
-                    className={`absolute -left-6 top-3 h-5 w-5 rounded-full border-2 bg-white flex items-center justify-center text-[10px] font-bold ${
+                    className={`absolute -left-5 sm:-left-6 top-3 h-4 w-4 sm:h-5 sm:w-5 rounded-full border-2 bg-white flex items-center justify-center text-[9px] sm:text-[10px] font-bold ${
                       isLiveChat
                         ? 'border-emerald-600 text-emerald-600'
                         : isSent
@@ -181,15 +181,15 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
                   <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden transition-all hover:border-slate-300">
                     
                     {/* Message Card Header */}
-                    <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
+                    <div className="p-2.5 sm:p-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                         {getChannelBadge(comm.channel)}
                         <span className="font-mono text-xs font-semibold text-slate-700">
                           {comm.date}
                         </span>
-                        <span className="text-slate-300">·</span>
-                        <span className="text-xs text-slate-500 font-medium">
-                          Logged by {comm.createdBy || 'Team Member'}
+                        <span className="text-slate-300 hidden xs:inline">·</span>
+                        <span className="text-[11px] sm:text-xs text-slate-500 font-medium">
+                          {comm.createdBy || 'Team Member'}
                         </span>
                       </div>
 

@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { OverviewView } from './components/OverviewView';
 import { CommunicationView } from './components/CommunicationView';
 import { ManufacturerView } from './components/ManufacturerView';
+import { SpreadsheetView } from './components/SpreadsheetView';
 import { AccessView } from './components/AccessView';
 import { LoginView } from './components/LoginView';
 import { CommunicationModal } from './components/CommunicationModal';
@@ -87,7 +88,7 @@ const MainLayout: React.FC = () => {
       />
 
       {/* Main Single-Container Workspace */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 pb-20 sm:pb-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-5 lg:px-6 py-4 sm:py-6 pb-24 md:pb-8">
         {activeTab === 'overview' && (
           <OverviewView
             onOpenCommModalWithManufacturer={handleOpenCommForManufacturer}
@@ -109,6 +110,8 @@ const MainLayout: React.FC = () => {
             onPreviewDoc={handlePreviewDoc}
           />
         )}
+
+        {activeTab === 'spreadsheet' && <SpreadsheetView />}
 
         {activeTab === 'permissions' && <AccessView />}
       </main>

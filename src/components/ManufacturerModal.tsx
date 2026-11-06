@@ -101,13 +101,15 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 overflow-hidden">
-      <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in fade-in zoom-in-95 max-h-[88vh] mb-14 sm:mb-0 flex flex-col">
+    <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden sm:my-auto animate-in fade-in zoom-in-95 max-h-[92dvh] sm:max-h-[88vh] flex flex-col">
+        {/* Mobile Grab Handle */}
+        <div className="sm:hidden w-10 h-1 bg-slate-300 rounded-full mx-auto mt-2 shrink-0" />
         
         {/* Header */}
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center">
+        <div className="p-3.5 sm:p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="h-7 w-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
               <Building2 className="h-4 w-4" />
             </div>
             <div>
@@ -215,17 +217,17 @@ export const ManufacturerModal: React.FC<ManufacturerModalProps> = ({
           </div>
 
           {/* Footer Controls */}
-          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+          <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-50"
+              className="flex-1 sm:flex-initial min-h-[42px] px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 shadow-xs"
+              className="flex-1 sm:flex-initial min-h-[42px] px-5 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 shadow-xs"
             >
               {isEditing ? 'Save Supplier' : 'Register Supplier'}
             </button>

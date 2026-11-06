@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import fs from 'fs';
+import { INITIAL_MANUFACTURERS, INITIAL_COMMUNICATIONS } from './src/data/initialData';
 
 dotenv.config();
 
@@ -27,29 +28,247 @@ app.use(express.json({ limit: '10mb' }));
 
 const PORT = Number(process.env.PORT) || 3000;
 
+// Maintain in-memory snapshot initialized from disk or initial data so /spreadsheet and /api/backup.csv always have live data
+let latestDbState: {
+  manufacturers: any[];
+  communications: any[];
+  users?: any[];
+  rolePermissions?: any;
+  auditLogs?: any[];
+  updatedAt?: string;
+} = {
+  manufacturers: INITIAL_MANUFACTURERS,
+  communications: INITIAL_COMMUNICATIONS,
+  updatedAt: new Date().toISOString(),
+};
+
+try {
+  if (fs.existsSync(DB_FILE)) {
+    const parsed = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+    if (parsed && Array.isArray(parsed.manufacturers)) {
+      latestDbState = {
+        ...parsed,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  }
+} catch (err) {
+  console.warn('Initial DB load notice:', err);
+}
+
 // Local file database persistence endpoints
 app.get('/api/db', (_req, res) => {
   try {
     if (fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, 'utf-8');
-      return res.json({ success: true, data: JSON.parse(raw) });
+      const parsed = JSON.parse(raw);
+      latestDbState = { ...parsed, updatedAt: latestDbState.updatedAt || new Date().toISOString() };
+      return res.json({ success: true, data: parsed });
     }
-    return res.json({ success: true, data: null });
+    return res.json({ success: true, data: latestDbState });
   } catch (err: any) {
     console.warn('Error reading local db file:', err.message || err);
-    return res.json({ success: true, data: null });
+    return res.json({ success: true, data: latestDbState });
   }
 });
 
 app.post('/api/db', (req, res) => {
   try {
     const payload = req.body;
+    if (payload && Array.isArray(payload.manufacturers)) {
+      latestDbState = {
+        ...payload,
+        updatedAt: new Date().toISOString(),
+      };
+    }
     fs.writeFileSync(DB_FILE, JSON.stringify(payload, null, 2), 'utf-8');
     return res.json({ success: true, message: 'Local database saved successfully' });
   } catch (err: any) {
-    // In production Cloud Run, disk may be read-only while Firestore handles persistence
-    return res.json({ success: true, message: 'Synced (Firestore primary)' });
+    // In production Cloud Run, disk may be read-only while inMemory + Firestore handle persistence
+    return res.json({ success: true, message: 'Synced (Firestore & memory primary)' });
   }
+});
+
+// Helper to format CSV from latestDbState
+function buildBackupCsv(): string {
+  const manufacturers = latestDbState.manufacturers || [];
+  const communications = latestDbState.communications || [];
+  const esc = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+  let csv = `CENTRAL INPUT • Live Online Backup Spreadsheet,Last Updated: ${latestDbState.updatedAt || new Date().toISOString()},Suppliers: ${manufacturers.length},Communications: ${communications.length}\n`;
+  csv += 'A. MANUFACTURER LIST (one row per manufacturer)\n';
+  csv += 'Manufacturer ID,Manufacturer,Website,Contact Email / Chat Portal,Product(s) of Interest,Notes,Record Status\n';
+  manufacturers.forEach((m: any) => {
+    csv += [
+      esc(m.id),
+      esc(m.name),
+      esc(m.website),
+      esc(m.contactPortal),
+      esc(m.productsOfInterest),
+      esc(m.notes),
+      esc(m.status),
+    ].join(',') + '\n';
+  });
+
+  csv += '\nB. COMMUNICATION HISTORY (one row per email / call / chat)\n';
+  csv += 'Date,Manufacturer,Thread Selection,Thread ID (auto),Channel / Direction,Subject / Purpose,Key Outcome / Summary,Current Status,Follow-up Date,Chat / Thread Doc,Documents Received,Technical Info Received,Live Chat Transcript,Manufacturer ID (auto),Entry key (helper)\n';
+  communications.forEach((c: any) => {
+    const docs = Array.isArray(c.documentsReceived) ? c.documentsReceived.join('; ') : '';
+    const chatTranscript = Array.isArray(c.chatTurns) && c.chatTurns.length > 0
+      ? c.chatTurns
+          .map(
+            (t: any, i: number) =>
+              `[${i + 1}. ${t.sender === 'us' ? 'OUR TEAM' : 'SUPPLIER'}${
+                t.timestamp ? ` (${t.timestamp})` : ''
+              }]: ${t.message}`
+          )
+          .join(' | ')
+      : '';
+    csv += [
+      esc(c.date),
+      esc(c.manufacturerName),
+      esc(c.threadSelection),
+      esc(c.threadId),
+      esc(c.channel),
+      esc(c.subject),
+      esc(c.keyOutcome),
+      esc(c.status),
+      esc(c.followUpDate),
+      esc(c.threadDoc),
+      esc(docs),
+      esc(c.informationReceived),
+      esc(chatTranscript),
+      esc(c.manufacturerId),
+      esc(c.entryKey),
+    ].join(',') + '\n';
+  });
+
+  return csv;
+}
+
+// Live CSV Feed Endpoint (compatible with Google Sheets =IMPORTDATA(".../api/backup.csv"))
+app.get('/api/backup.csv', (_req, res) => {
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.send(buildBackupCsv());
+});
+
+// Standalone Live Online Backup Spreadsheet Page (/spreadsheet)
+app.get('/spreadsheet', (_req, res) => {
+  const manufacturers = latestDbState.manufacturers || [];
+  const communications = latestDbState.communications || [];
+  const updatedAt = latestDbState.updatedAt || new Date().toISOString();
+  const escHtml = (s: any) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manufacturer Comms — Live Online Backup Spreadsheet</title>
+  <meta http-equiv="refresh" content="15" />
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { margin: 0; background: #f8fafc; color: #0f172a; font-size: 12px; }
+    .topbar { background: #065f46; color: #fff; padding: 10px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; position: sticky; top: 0; z-index: 20; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+    .topbar h1 { margin: 0; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .badge { background: rgba(255,255,255,0.18); padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .actions { display: flex; align-items: center; gap: 8px; }
+    .btn { background: #fff; color: #065f46; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 11px; border: none; cursor: pointer; }
+    .btn-secondary { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3); }
+    .sheet-wrap { overflow-x: auto; padding: 12px; }
+    table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid #cbd5e1; }
+    th, td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; vertical-align: top; max-width: 320px; word-wrap: break-word; }
+    .col-hdr th { background: #e2e8f0; color: #475569; font-family: monospace; font-size: 11px; text-align: center; font-weight: 700; }
+    .row-num { background: #f1f5f9; color: #64748b; font-family: monospace; font-size: 11px; text-align: center; width: 38px; font-weight: 600; }
+    .sec-title td { background: #064e3b; color: #fff; font-weight: 700; font-size: 12px; }
+    .tbl-hdr td { background: #1e293b; color: #fff; font-weight: 600; font-size: 11px; }
+    tr:nth-child(even) td:not(.sec-title td):not(.tbl-hdr td) { background: #f8fafc; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>
+      <span>📊 CENTRAL INPUT • Live Online Backup Spreadsheet</span>
+      <span class="badge">Auto-Syncing (15s) • Last Updated: ${escHtml(updatedAt.replace('T', ' ').slice(0, 19))} UTC</span>
+    </h1>
+    <div class="actions">
+      <a class="btn btn-secondary" href="/?tab=spreadsheet">Open in Webapp & Connect Google Sheets</a>
+      <a class="btn" href="/api/backup.csv" download="Manufacturer_Comms_Backup.csv">⬇ Download CSV</a>
+    </div>
+  </div>
+  <div class="sheet-wrap">
+    <table>
+      <tr class="sec-title"><td class="row-num">1</td><td colspan="14">A. MANUFACTURER LIST (${manufacturers.length} Manufacturers)</td></tr>
+      <tr class="tbl-hdr">
+        <td class="row-num">2</td>
+        <td>Manufacturer ID</td><td>Manufacturer</td><td>Website</td><td>Contact Email / Chat Portal</td><td>Product(s) of Interest</td><td>Notes</td><td>Record Status</td><td colspan="7"></td>
+      </tr>
+      ${manufacturers
+        .map(
+          (m: any, idx: number) => `<tr>
+        <td class="row-num">${idx + 3}</td>
+        <td><strong>${escHtml(m.id)}</strong></td>
+        <td>${escHtml(m.name)}</td>
+        <td>${escHtml(m.website)}</td>
+        <td>${escHtml(m.contactPortal)}</td>
+        <td>${escHtml(m.productsOfInterest)}</td>
+        <td>${escHtml(m.notes)}</td>
+        <td>${escHtml(m.status)}</td>
+        <td colspan="7"></td>
+      </tr>`
+        )
+        .join('')}
+      <tr class="sec-title"><td class="row-num">${manufacturers.length + 3}</td><td colspan="14">B. COMMUNICATION HISTORY (${communications.length} Logs)</td></tr>
+      <tr class="tbl-hdr">
+        <td class="row-num">${manufacturers.length + 4}</td>
+        <td>Date</td><td>Manufacturer</td><td>Thread ID</td><td>Channel / Direction</td><td>Subject / Purpose</td><td>Key Outcome / Summary</td><td>Current Status</td><td>Follow-up Date</td><td>Documents Received</td><td>Technical Info Received</td><td>Live Chat Transcript</td><td>Manufacturer ID</td><td>Entry Key</td><td>Logged By</td>
+      </tr>
+      ${communications
+        .map((c: any, idx: number) => {
+          const docs = Array.isArray(c.documentsReceived) ? c.documentsReceived.join('; ') : '';
+          const chat =
+            Array.isArray(c.chatTurns) && c.chatTurns.length > 0
+              ? c.chatTurns
+                  .map(
+                    (t: any, i: number) =>
+                      `[${i + 1}. ${t.sender === 'us' ? 'OUR TEAM' : 'SUPPLIER'}${
+                        t.timestamp ? ` (${t.timestamp})` : ''
+                      }]: ${t.message}`
+                  )
+                  .join(' | ')
+              : '';
+          return `<tr>
+        <td class="row-num">${manufacturers.length + 5 + idx}</td>
+        <td>${escHtml(c.date)}</td>
+        <td><strong>${escHtml(c.manufacturerName)}</strong></td>
+        <td>${escHtml(c.threadId)}</td>
+        <td>${escHtml(c.channel)}</td>
+        <td>${escHtml(c.subject)}</td>
+        <td>${escHtml(c.keyOutcome)}</td>
+        <td>${escHtml(c.status)}</td>
+        <td>${escHtml(c.followUpDate)}</td>
+        <td>${escHtml(docs)}</td>
+        <td>${escHtml(c.informationReceived)}</td>
+        <td>${escHtml(chat)}</td>
+        <td>${escHtml(c.manufacturerId)}</td>
+        <td>${escHtml(c.entryKey)}</td>
+        <td>${escHtml(c.createdBy)}</td>
+      </tr>`;
+        })
+        .join('')}
+    </table>
+  </div>
+</body>
+</html>`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
 });
 
 // Helper to get GoogleGenAI client

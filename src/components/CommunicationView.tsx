@@ -52,6 +52,7 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
   const [selectedCommType, setSelectedCommType] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [onlyWithFollowup, setOnlyWithFollowup] = useState<boolean>(false);
+  const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
   
   // Expanded states
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
@@ -234,100 +235,241 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
   return (
     <div className="space-y-4">
 
-      {/* SEARCH AND FILTER BAR */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3.5">
+      {/* VIEW MODE SWITCHER & QUICK FILTER PILLS */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200 shadow-2xs">
         
-        {/* Top Header: View Mode Switcher + Search */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          
-          {/* Display Mode Toggle & Thread Collapse Controls */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl w-fit">
-              <button
-                onClick={() => setDisplayMode('threads')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  displayMode === 'threads'
-                    ? 'bg-indigo-600 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <MessageSquare className="h-4 w-4" />
-                <span>💬 Thread Groups ({threadGroups.length})</span>
-              </button>
+        {/* Left: Mode Toggle + Collapse/Expand All */}
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+          <div className="grid grid-cols-2 sm:flex items-center bg-slate-100 p-1 rounded-xl w-full sm:w-fit">
+            <button
+              onClick={() => setDisplayMode('threads')}
+              className={`flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                displayMode === 'threads'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${displayMode === 'threads' ? 'text-indigo-600' : 'text-slate-500'}`} />
+              <span className="truncate">Conversation Threads ({threadGroups.length})</span>
+            </button>
 
+            <button
+              onClick={() => setDisplayMode('table')}
+              className={`flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                displayMode === 'table'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Layers className={`h-3.5 w-3.5 shrink-0 ${displayMode === 'table' ? 'text-indigo-600' : 'text-slate-500'}`} />
+              <span className="truncate">All Logs Table ({filteredComms.length})</span>
+            </button>
+          </div>
+
+          {displayMode === 'threads' && threadGroups.length > 0 && (
+            <div className="grid grid-cols-2 sm:flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
               <button
-                onClick={() => setDisplayMode('table')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  displayMode === 'table'
-                    ? 'bg-indigo-600 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                onClick={collapseAllThreads}
+                className="justify-center px-2.5 py-1.5 sm:py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                title="Collapse all threads"
               >
-                <Layers className="h-4 w-4" />
-                <span>📋 All Logs Table ({filteredComms.length})</span>
+                <ChevronUp className="h-3.5 w-3.5" />
+                <span>Collapse All</span>
+              </button>
+              <button
+                onClick={expandAllThreads}
+                className="justify-center px-2.5 py-1.5 sm:py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                title="Expand all threads"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+                <span>Expand All</span>
               </button>
             </div>
+          )}
+        </div>
 
-            {displayMode === 'threads' && threadGroups.length > 0 && (
-              <div className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl">
+        {/* Right: Quick Action Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+          <span className="text-[11px] font-semibold text-slate-400 mr-1 whitespace-nowrap">Quick Filter:</span>
+          
+          <button
+            onClick={() => {
+              setSelectedCommType('ALL');
+              setSelectedStatus('ALL');
+              setOnlyWithFollowup(false);
+            }}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+              selectedCommType === 'ALL' && selectedStatus === 'ALL' && !onlyWithFollowup
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            All Records
+          </button>
+
+          <button
+            onClick={() => setSelectedCommType(selectedCommType === 'ALL_EMAILS' ? 'ALL' : 'ALL_EMAILS')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
+              selectedCommType === 'ALL_EMAILS'
+                ? 'bg-blue-600 text-white font-semibold'
+                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+            }`}
+          >
+            <Mail className="h-3 w-3" />
+            <span>Emails Only</span>
+          </button>
+
+          <button
+            onClick={() => setSelectedCommType(selectedCommType === 'Live Chat (Session)' ? 'ALL' : 'Live Chat (Session)')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
+              selectedCommType === 'Live Chat (Session)'
+                ? 'bg-emerald-600 text-white font-semibold'
+                : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+            }`}
+          >
+            <MessageSquare className="h-3 w-3" />
+            <span>Live Chats</span>
+          </button>
+
+          <button
+            onClick={() => setSelectedStatus(selectedStatus === 'Awaiting Reply' ? 'ALL' : 'Awaiting Reply')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
+              selectedStatus === 'Awaiting Reply'
+                ? 'bg-amber-600 text-white font-semibold'
+                : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+            }`}
+          >
+            <Clock className="h-3 w-3" />
+            <span>Awaiting Reply ({awaitingReplyCount})</span>
+          </button>
+
+          <button
+            onClick={() => setOnlyWithFollowup(!onlyWithFollowup)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
+              onlyWithFollowup
+                ? 'bg-indigo-600 text-white font-semibold'
+                : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+            }`}
+          >
+            <Calendar className="h-3 w-3" />
+            <span>Follow-ups Due ({followupsDueCount})</span>
+          </button>
+        </div>
+      </div>
+
+      {/* QUICK MANUFACTURER FILTER PILLS */}
+      {manufacturers.length > 0 && (
+        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 shrink-0 flex items-center gap-1">
+            <Building2 className="h-3.5 w-3.5 text-indigo-500" />
+            <span>Supplier:</span>
+          </span>
+
+          <button
+            onClick={() => setSelectedManufacturer('ALL')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              selectedManufacturer === 'ALL'
+                ? 'bg-indigo-600 text-white shadow-2xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            All ({communications.length})
+          </button>
+
+          {manufacturers.map(m => {
+            const count = communications.filter(c => c.manufacturerId === m.id).length;
+            const isSelected = selectedManufacturer === m.id;
+            return (
+              <button
+                key={m.id}
+                onClick={() => setSelectedManufacturer(isSelected ? 'ALL' : m.id)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
+                  isSelected
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <span>{m.name}</span>
+                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                  isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* FILTER & SEARCH BAR */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-2xs space-y-3">
+        
+        {/* Top Row: Search Input + Mobile Filter Toggle + Clear Filters */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 flex-1 max-w-xl">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search threads, part numbers, outcomes..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-900 placeholder:text-slate-400 font-medium transition-all"
+              />
+              {searchQuery && (
                 <button
-                  onClick={collapseAllThreads}
-                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-white rounded-lg transition-colors flex items-center gap-1"
-                  title="Hide message list for all threads"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
-                  <ChevronUp className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Collapse All</span>
+                  <X className="h-3.5 w-3.5" />
                 </button>
-                <span className="text-slate-300">|</span>
-                <button
-                  onClick={expandAllThreads}
-                  className="px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-white rounded-lg transition-colors flex items-center gap-1"
-                  title="Show message stream for all threads"
-                >
-                  <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Expand All</span>
-                </button>
-              </div>
-            )}
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className={`sm:hidden px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1 shrink-0 transition-colors ${
+                showMobileFilters || isFiltered
+                  ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                  : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}
+            >
+              <Filter className="h-3.5 w-3.5" />
+              <span>Filters</span>
+            </button>
           </div>
 
-          {/* Search Input */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search part numbers (e.g. A7671G), prices, subject..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-9 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-900 placeholder:text-slate-400 font-medium transition-all"
-            />
-            {searchQuery && (
+          <div className="flex items-center justify-between sm:justify-end gap-2">
+            <span className="text-xs text-slate-500 font-medium">
+              Showing <strong className="text-slate-900">{filteredComms.length}</strong> entries in <strong className="text-indigo-700">{threadGroups.length}</strong> threads
+            </span>
+            {isFiltered && (
               <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-600"
+                onClick={resetFilters}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
               >
-                ✕
+                <RotateCcw className="h-3 w-3" />
+                <span>Reset</span>
               </button>
             )}
           </div>
-
         </div>
 
-        {/* Dropdowns Filter Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+        {/* Bottom Row: Dropdown Filters (Collapsible on mobile) */}
+        <div className={`${showMobileFilters ? 'grid' : 'hidden sm:grid'} grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2 border-t border-slate-100 text-xs`}>
           
-          {/* Manufacturer Filter */}
+          {/* Filter by Manufacturer */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
-              <Building2 className="h-3.5 w-3.5 text-slate-500" />
-              <span>Manufacturer</span>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+              Manufacturer
             </label>
             <select
               value={selectedManufacturer}
               onChange={e => setSelectedManufacturer(e.target.value)}
-              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
-              <option value="ALL">All Manufacturers ({manufacturers.length})</option>
+              <option value="ALL">All Suppliers ({manufacturers.length})</option>
               {manufacturers.map(m => (
                 <option key={m.id} value={m.id}>
                   {m.id} · {m.name}
@@ -336,19 +478,18 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
             </select>
           </div>
 
-          {/* Communication Type Filter */}
+          {/* Filter by Communication Type / Channel */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
-              <Filter className="h-3.5 w-3.5 text-slate-500" />
-              <span>Communication Type</span>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+              Communication Type
             </label>
             <select
               value={selectedCommType}
               onChange={e => setSelectedCommType(e.target.value)}
-              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
-              <option value="ALL">All Types</option>
-              <option value="ALL_EMAILS">All Emails (Received & Sent)</option>
+              <option value="ALL">All Channels & Types</option>
+              <option value="ALL_EMAILS">All Emails (Sent & Received)</option>
               {commTypes.map(ct => (
                 <option key={ct} value={ct}>
                   {ct}
@@ -357,16 +498,15 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
             </select>
           </div>
 
-          {/* Status Filter */}
+          {/* Filter by Current Status */}
           <div>
-            <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5 text-slate-500" />
-              <span>Status</span>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+              Current Status
             </label>
             <select
               value={selectedStatus}
               onChange={e => setSelectedStatus(e.target.value)}
-              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
               <option value="ALL">All Statuses</option>
               <option value="Awaiting Reply">Awaiting Reply</option>
@@ -378,89 +518,34 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
             </select>
           </div>
 
-        </div>
-
-        {/* Filter Shortcuts Bar */}
-        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-slate-400 font-medium mr-1">Quick Filters:</span>
-            
-            <button
-              onClick={resetFilters}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
-                !isFiltered
-                  ? 'bg-slate-900 text-white font-semibold'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              All
-            </button>
-
-            <button
-              onClick={() => setSelectedCommType(selectedCommType === 'ALL_EMAILS' ? 'ALL' : 'ALL_EMAILS')}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1 ${
-                selectedCommType === 'ALL_EMAILS'
-                  ? 'bg-indigo-600 text-white font-semibold'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <Mail className="h-3 w-3" />
-              <span>Emails</span>
-            </button>
-
-            <button
-              onClick={() => setSelectedStatus(selectedStatus === 'Awaiting Reply' ? 'ALL' : 'Awaiting Reply')}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
-                selectedStatus === 'Awaiting Reply'
-                  ? 'bg-amber-600 text-white font-semibold'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Awaiting Reply
-            </button>
-
-            <button
-              onClick={() => setOnlyWithFollowup(!onlyWithFollowup)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1 ${
-                onlyWithFollowup
-                  ? 'bg-indigo-600 text-white font-semibold'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <Calendar className="h-3 w-3" />
-              <span>Pending Follow-up</span>
-            </button>
+          {/* Follow-up Toggle */}
+          <div className="flex items-end">
+            <label className="flex items-center gap-2 cursor-pointer w-full px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg select-none">
+              <input
+                type="checkbox"
+                checked={onlyWithFollowup}
+                onChange={e => setOnlyWithFollowup(e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+              />
+              <span className="font-semibold text-slate-700">Follow-up Due Only</span>
+            </label>
           </div>
 
-          <div className="flex items-center gap-2.5 ml-auto">
-            <span className="text-[11px] text-slate-500 font-mono">
-              {threadGroups.length} Thread Groups ({filteredComms.length} messages)
-            </span>
-
-            {isFiltered && (
-              <button
-                onClick={resetFilters}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-0.5 rounded transition-colors"
-              >
-                <RotateCcw className="h-3 w-3" />
-                <span>Reset Filters</span>
-              </button>
-            )}
-          </div>
         </div>
-
       </div>
 
       {/* DISPLAY MODE 1: THREAD CONVERSATION GROUPS */}
       {displayMode === 'threads' && (
         <div className="space-y-4">
           {threadGroups.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200 p-10 text-center text-slate-400 text-xs">
+            <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center text-slate-400 text-xs">
               <MessageSquare className="h-8 w-8 text-slate-300 mx-auto mb-2" />
               <p className="font-semibold text-slate-600">No communication threads match your filters.</p>
-              <button onClick={resetFilters} className="mt-2 text-indigo-600 hover:underline font-semibold">
-                Reset filters
-              </button>
+              {isFiltered && (
+                <button onClick={resetFilters} className="mt-2 text-indigo-600 hover:underline font-semibold">
+                  Reset filters
+                </button>
+              )}
             </div>
           ) : (
             threadGroups.map(group => {
@@ -469,76 +554,63 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
               return (
                 <div
                   key={group.threadId}
-                  className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden transition-all hover:border-slate-300"
+                  className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden transition-all"
                 >
-                  {/* Thread Header Card */}
-                  <div className="p-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <span className="font-mono text-xs font-bold bg-indigo-600 text-white px-2.5 py-1 rounded-lg shadow-2xs shrink-0">
-                        Thread {group.threadId}
+                  {/* Thread Header Bar */}
+                  <div
+                    onClick={() => toggleThreadExpand(group.threadId)}
+                    className="p-3 sm:p-4 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 cursor-pointer select-none hover:bg-slate-800/95 transition-colors"
+                  >
+                    <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0">
+                      <span className="font-mono text-xs font-bold bg-indigo-600 text-white px-2 sm:px-2.5 py-1 rounded-lg shadow-xs shrink-0">
+                        {group.threadId}
                       </span>
 
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-bold text-sm text-white">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                          <h3 className="font-bold text-xs sm:text-sm text-white">
                             {group.manufacturerName}
                           </h3>
-                          <span className="text-slate-400 text-xs font-mono">({group.manufacturerId})</span>
-                          <span className="text-slate-500">·</span>
-                          <span className="text-xs text-indigo-200 font-mono font-medium">
-                            {group.messages.length} {group.messages.length === 1 ? 'message' : 'messages'}
+                          <span className="text-slate-400 text-[11px] font-mono">
+                            ({group.manufacturerId})
+                          </span>
+                          <span className="text-slate-600 hidden sm:inline">•</span>
+                          <span className="text-[11px] text-indigo-300 font-mono bg-indigo-500/20 px-1.5 py-0.2 rounded">
+                            {group.messages.length} {group.messages.length === 1 ? 'entry' : 'entries'}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-300 truncate mt-0.5">
-                          Topic: {group.primarySubject}
+                        <p className="text-xs text-slate-200 font-medium line-clamp-1 mt-0.5">
+                          {group.primarySubject}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded border ${
-                        group.status === 'Completed'
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                          : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                      }`}>
+                    <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0 pt-1 sm:pt-0 border-t border-slate-800 sm:border-0" onClick={e => e.stopPropagation()}>
+                      <span
+                        className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border ${
+                          group.status === 'Completed' || group.status === 'Reply Received'
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : group.status === 'Information Received'
+                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        }`}
+                      >
                         {group.status}
                       </span>
 
-                      {/* Reply Button */}
-                      <button
-                        onClick={() => onOpenCommModal({
-                          id: '',
-                          date: '2026-11-04',
-                          manufacturerId: group.manufacturerId,
-                          manufacturerName: group.manufacturerName,
-                          threadSelection: group.threadId,
-                          threadId: group.threadId,
-                          channel: 'Email - Sent',
-                          subject: `Re: ${group.primarySubject}`,
-                          keyOutcome: '',
-                          status: 'Awaiting Reply',
-                        })}
-                        disabled={!hasPermission('canLogCommunication')}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors disabled:opacity-40"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        <span className="hidden sm:inline">Reply</span>
-                      </button>
-
-                      {/* SINGLE Expand / Collapse Button */}
                       <button
                         onClick={() => toggleThreadExpand(group.threadId)}
-                        className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 transition-colors shadow-2xs"
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1 transition-colors cursor-pointer"
                         title={isCollapsed ? 'Expand thread messages' : 'Collapse thread messages'}
                       >
                         {isCollapsed ? (
                           <>
-                            <ChevronDown className="h-4 w-4" />
-                            <span>Expand ({group.messages.length})</span>
+                            <ChevronDown className="h-3.5 w-3.5 text-indigo-400" />
+                            <span>Expand</span>
                           </>
                         ) : (
                           <>
-                            <ChevronUp className="h-4 w-4" />
+                            <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
                             <span>Collapse</span>
                           </>
                         )}
@@ -546,28 +618,38 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Collapsed Compact Summary */}
+                  {/* If Collapsed: Show Compact 1-Line Latest Activity Bar */}
                   {isCollapsed ? (
-                    <div className="p-3 bg-slate-50 border-t border-slate-200 text-xs flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-slate-600 min-w-0">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-200/60 px-1.5 py-0.5 rounded">
+                    <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200/80 text-xs flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-slate-600 truncate max-w-2xl">
+                        <span className="font-mono text-[11px] font-semibold text-slate-500">
                           Latest ({group.latestMsg.date}):
                         </span>
-                        <span className="font-semibold text-slate-800 truncate">{group.latestMsg.keyOutcome}</span>
+                        <span className="font-medium text-slate-800 truncate">
+                          {group.latestMsg.keyOutcome}
+                        </span>
                       </div>
-                      
-                      <button
-                        onClick={() => setActiveThreadModalId(group.threadId)}
-                        className="text-xs font-medium text-indigo-600 hover:text-indigo-800 shrink-0"
-                      >
-                        View Thread History
-                      </button>
+
+                      <div className="flex items-center gap-3">
+                        {group.latestMsg.followUpDate && group.status !== 'Completed' && (
+                          <span className="text-[11px] font-mono text-amber-700 font-semibold flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Follow-up: {group.latestMsg.followUpDate}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => setActiveThreadModalId(group.threadId)}
+                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                        >
+                          Full View →
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     /* Expanded Thread Messages Stream */
                     <>
-                      <div className="p-5 bg-slate-50/50 space-y-4">
-                        <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
+                      <div className="p-3 sm:p-5 bg-slate-50/50 space-y-3 sm:space-y-4">
+                        <div className="relative pl-5 sm:pl-6 space-y-3 sm:space-y-4 before:absolute before:left-2 sm:before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
                           
                           {group.messages.map((comm, idx) => {
                             const isSent = comm.channel.toLowerCase().includes('sent');
@@ -581,7 +663,7 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
                                 
                                 {/* Timeline Bullet Node */}
                                 <div
-                                  className={`absolute -left-6 top-3 h-5 w-5 rounded-full border-2 bg-white flex items-center justify-center text-[10px] font-bold ${
+                                  className={`absolute -left-5 sm:-left-6 top-3 h-4 w-4 sm:h-5 sm:w-5 rounded-full border-2 bg-white flex items-center justify-center text-[9px] sm:text-[10px] font-bold ${
                                     isLiveChat
                                       ? 'border-emerald-600 text-emerald-600'
                                       : isSent
@@ -593,7 +675,7 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
                                 </div>
 
                                 {/* Message Box */}
-                                <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-2.5">
+                                <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-4 shadow-2xs space-y-2.5">
                                   
                                   {/* Message Header */}
                                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -856,10 +938,132 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
         </div>
       )}
 
-      {/* DISPLAY MODE 2: FLAT ALL LOGS TABLE */}
+      {/* DISPLAY MODE 2: FLAT ALL LOGS TABLE (Mobile/Tablet Card Grid + Desktop Table) */}
       {displayMode === 'table' && (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-          <div className="overflow-x-auto">
+          {/* Mobile & Tablet Card Grid (lg:hidden) */}
+          <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:gap-3 md:p-3 divide-slate-100">
+            {filteredComms.length === 0 ? (
+              <div className="md:col-span-2 py-10 px-4 text-center text-slate-400 text-xs">
+                <p className="font-medium text-slate-600">No communication records match your search filters.</p>
+                <button onClick={resetFilters} className="text-xs text-indigo-600 hover:underline font-semibold mt-1">
+                  Reset filters
+                </button>
+              </div>
+            ) : (
+              filteredComms.map(comm => {
+                const isExpanded = expandedRowId === comm.id;
+                return (
+                  <div key={comm.id} className="p-3.5 md:rounded-xl md:border md:border-slate-200 space-y-2.5 text-xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-900">{comm.manufacturerName}</span>
+                          <button
+                            onClick={() => setActiveThreadModalId(comm.threadId)}
+                            className="font-mono text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 inline-flex items-center gap-1"
+                          >
+                            <span>{comm.threadId}</span>
+                            <MessageSquare className="h-2.5 w-2.5" />
+                          </button>
+                          <span className="font-mono text-[11px] text-slate-500">{comm.date}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
+                          {getChannelIcon(comm.channel)}
+                          <span>{comm.channel}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => onOpenCommModal(comm)}
+                          disabled={!hasPermission('canEditCommunication')}
+                          className="p-1.5 text-slate-500 hover:text-indigo-600 rounded-lg border border-slate-200 bg-slate-50 disabled:opacity-30"
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(comm)}
+                          disabled={!hasPermission('canDeleteCommunication')}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg border border-slate-200 bg-slate-50 disabled:opacity-30"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-bold text-slate-900">{comm.subject}</div>
+                      <p className="text-[11px] text-slate-600 line-clamp-2 mt-0.5">{comm.keyOutcome}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <select
+                        value={comm.status}
+                        onChange={e => handleStatusChange(comm.id, e.target.value as CommStatus)}
+                        disabled={!hasPermission('canEditCommunication')}
+                        className={`text-[11px] font-semibold rounded-lg px-2.5 py-1 border ${
+                          comm.status === 'Completed' || comm.status === 'Reply Received'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : comm.status === 'Information Received'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}
+                      >
+                        <option value="Completed">Completed</option>
+                        <option value="Awaiting Reply">Awaiting Reply</option>
+                        <option value="Reply Received">Reply Received</option>
+                        <option value="Information Received">Information Received</option>
+                        <option value="Pending Review">Pending Review</option>
+                        <option value="Action Required">Action Required</option>
+                      </select>
+
+                      <button
+                        onClick={() => setExpandedRowId(isExpanded ? null : comm.id)}
+                        className="text-[11px] font-semibold text-indigo-600 flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-50/70"
+                      >
+                        <span>{isExpanded ? 'Hide Details' : 'View Details'}</span>
+                        {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="pt-2 border-t border-slate-100 space-y-2">
+                        {comm.chatTurns && comm.chatTurns.length > 0 && (
+                          <div className="space-y-1.5">
+                            {comm.chatTurns.map((turn, tIdx) => (
+                              <div
+                                key={turn.id || tIdx}
+                                className={`p-2 rounded-lg border text-[11px] ${
+                                  turn.sender === 'us'
+                                    ? 'bg-indigo-50/60 border-indigo-200'
+                                    : 'bg-emerald-50/60 border-emerald-200'
+                                }`}
+                              >
+                                <span className="font-bold block text-[10px]">
+                                  {turn.sender === 'us' ? `📤 #${tIdx + 1} Us:` : `📩 #${tIdx + 1} ${comm.manufacturerName}:`}
+                                </span>
+                                <p className="text-slate-800 whitespace-pre-line">{turn.message}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {comm.informationReceived && (
+                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-800 whitespace-pre-line">
+                            <strong className="block text-[10px] uppercase text-slate-400 mb-0.5">Technical Details:</strong>
+                            {comm.informationReceived}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop Table (hidden lg:block) */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
