@@ -2,70 +2,222 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // =========================================================================
+    // Global Helpers & Primitives
+    // =========================================================================
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-|]+$');
+    }
+
     function isValidString(val, maxLen) {
       return val is string && val.size() <= maxLen;
     }
 
+    function isOptionalString(data, field, maxLen) {
+      return !(field in data) || data[field] == null || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isOptionalList(data, field, maxItems) {
+      return !(field in data) || data[field] == null || (data[field] is list && data[field].size() <= maxItems);
+    }
+
+    // =========================================================================
+    // Entity Validation Blueprints
+    // =========================================================================
+
     function isValidManufacturer(data) {
       return data.keys().hasAll(['id', 'name', 'status'])
-        && isValidString(data.id, 64)
-        && isValidString(data.name, 300)
-        && data.status in ['Active', 'Removed', 'Archived'];
+        && data.keys().hasOnly([
+          'id',
+          'name',
+          'website',
+          'contactPortal',
+          'productsOfInterest',
+          'notes',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.name, 500)
+        && data.status in ['Active', 'Removed', 'Archived']
+        && isOptionalString(data, 'website', 1000)
+        && isOptionalString(data, 'contactPortal', 1000)
+        && isOptionalString(data, 'productsOfInterest', 5000)
+        && isOptionalString(data, 'notes', 10000)
+        && isOptionalString(data, 'createdAt', 64)
+        && isOptionalString(data, 'updatedAt', 64);
     }
 
     function isValidCommunication(data) {
       return data.keys().hasAll(['id', 'date', 'manufacturerId', 'channel', 'subject'])
-        && isValidString(data.id, 128)
-        && isValidString(data.date, 40)
-        && isValidString(data.manufacturerId, 64)
-        && isValidString(data.channel, 100)
-        && isValidString(data.subject, 500);
+        && data.keys().hasOnly([
+          'id',
+          'date',
+          'manufacturerId',
+          'manufacturerName',
+          'threadSelection',
+          'threadId',
+          'channel',
+          'subject',
+          'keyOutcome',
+          'status',
+          'nextAction',
+          'followUpDate',
+          'threadDoc',
+          'fullEmailText',
+          'documentsReceived',
+          'attachments',
+          'informationReceived',
+          'chatTurns',
+          'outboundSummary',
+          'inboundResponse',
+          'entryKey',
+          'createdBy',
+          'createdAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.date, 64)
+        && isValidId(data.manufacturerId)
+        && isValidString(data.channel, 200)
+        && isValidString(data.subject, 2000)
+        && isOptionalString(data, 'manufacturerName', 500)
+        && isOptionalString(data, 'threadSelection', 128)
+        && isOptionalString(data, 'threadId', 128)
+        && isOptionalString(data, 'keyOutcome', 20000)
+        && isOptionalString(data, 'status', 100)
+        && isOptionalString(data, 'nextAction', 5000)
+        && isOptionalString(data, 'followUpDate', 64)
+        && isOptionalString(data, 'threadDoc', 1000)
+        && isOptionalString(data, 'fullEmailText', 100000)
+        && isOptionalList(data, 'documentsReceived', 100)
+        && isOptionalList(data, 'attachments', 50)
+        && isOptionalString(data, 'informationReceived', 50000)
+        && isOptionalList(data, 'chatTurns', 200)
+        && isOptionalString(data, 'outboundSummary', 20000)
+        && isOptionalString(data, 'inboundResponse', 20000)
+        && isOptionalString(data, 'entryKey', 128)
+        && isOptionalString(data, 'createdBy', 200)
+        && isOptionalString(data, 'createdAt', 64);
     }
 
     function isValidUser(data) {
       return data.keys().hasAll(['id', 'name', 'email', 'role'])
-        && isValidString(data.id, 128)
-        && isValidString(data.name, 200)
+        && data.keys().hasOnly([
+          'id',
+          'name',
+          'email',
+          'role',
+          'department',
+          'avatar',
+          'isActive',
+          'lastLogin'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.name, 300)
         && isValidString(data.email, 320)
-        && data.role in ['admin', 'manager', 'engineer', 'auditor'];
+        && data.role in ['admin', 'manager', 'engineer', 'auditor']
+        && isOptionalString(data, 'department', 300)
+        && isOptionalString(data, 'avatar', 500)
+        && (!('isActive' in data) || data.isActive is bool)
+        && isOptionalString(data, 'lastLogin', 64);
     }
 
     function isValidAuditLog(data) {
       return data.keys().hasAll(['id', 'timestamp', 'action', 'category'])
-        && isValidString(data.id, 128)
+        && data.keys().hasOnly([
+          'id',
+          'timestamp',
+          'userId',
+          'userName',
+          'action',
+          'category',
+          'details',
+          'targetId'
+        ])
+        && isValidId(data.id)
         && isValidString(data.timestamp, 64)
-        && isValidString(data.action, 120)
-        && isValidString(data.category, 64);
+        && isValidString(data.action, 200)
+        && data.category in ['MANUFACTURER', 'COMMUNICATION', 'PERMISSION', 'DATA']
+        && isOptionalString(data, 'userId', 128)
+        && isOptionalString(data, 'userName', 300)
+        && isOptionalString(data, 'details', 5000)
+        && isOptionalString(data, 'targetId', 128);
     }
 
+    function isValidSetting(settingId, data) {
+      return isValidId(settingId)
+        && (
+          (settingId == 'googleSheetBackup'
+            && data.keys().hasOnly([
+              'spreadsheetId',
+              'spreadsheetUrl',
+              'spreadsheetTitle',
+              'lastSyncedAt',
+              'lastSyncedManufacturerCount',
+              'lastSyncedCommCount',
+              'lastSyncedHash'
+            ])
+            && isOptionalString(data, 'spreadsheetId', 256)
+            && isOptionalString(data, 'spreadsheetUrl', 1000)
+            && isOptionalString(data, 'spreadsheetTitle', 500)
+            && isOptionalString(data, 'lastSyncedAt', 64)
+            && (!('lastSyncedManufacturerCount' in data) || data.lastSyncedManufacturerCount is number)
+            && (!('lastSyncedCommCount' in data) || data.lastSyncedCommCount is number)
+            && isOptionalString(data, 'lastSyncedHash', 128)
+          )
+          ||
+          (settingId == 'permissions'
+            && data.keys().hasOnly(['admin', 'manager', 'engineer', 'auditor'])
+          )
+        );
+    }
+
+    // =========================================================================
+    // Collection Match Blocks
+    // =========================================================================
+
     match /manufacturers/{manufacturerId} {
-      allow read: if true;
-      allow create, update: if isValidManufacturer(request.resource.data);
-      allow delete: if true;
+      allow get: if isValidId(manufacturerId);
+      allow list: if true;
+      allow create, update: if isValidId(manufacturerId) && isValidManufacturer(incoming());
+      allow delete: if isValidId(manufacturerId);
     }
 
     match /communications/{communicationId} {
-      allow read: if true;
-      allow create, update: if isValidCommunication(request.resource.data);
-      allow delete: if true;
+      allow get: if isValidId(communicationId);
+      allow list: if true;
+      allow create, update: if isValidId(communicationId) && isValidCommunication(incoming());
+      allow delete: if isValidId(communicationId);
     }
 
     match /users/{userId} {
-      allow read: if true;
-      allow create, update: if isValidUser(request.resource.data);
-      allow delete: if true;
+      allow get: if isValidId(userId);
+      allow list: if true;
+      allow create, update: if isValidId(userId) && isValidUser(incoming());
+      allow delete: if isValidId(userId);
     }
 
     match /auditLogs/{logId} {
-      allow read: if true;
-      allow create, update: if isValidAuditLog(request.resource.data);
-      allow delete: if true;
+      allow get: if isValidId(logId);
+      allow list: if true;
+      allow create, update: if isValidId(logId) && isValidAuditLog(incoming());
+      allow delete: if isValidId(logId);
     }
 
     match /settings/{settingId} {
-      allow read, write: if true;
+      allow get: if isValidId(settingId);
+      allow list: if true;
+      allow create, update: if isValidSetting(settingId, incoming());
+      allow delete: if isValidId(settingId);
     }
 
+    // Default-deny catch-all
     match /{document=**} {
       allow read, write: if false;
     }

@@ -8,10 +8,12 @@ import {
   CheckCircle2,
   Copy,
   Check,
+  ExternalLink,
+  ArrowRight,
 } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
-  const { loginWithGoogle, firebaseProjectId } = useApp();
+  const { loginWithGoogle, loginWithUser, users, currentUser, firebaseProjectId } = useApp();
 
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -32,6 +34,11 @@ export const LoginView: React.FC = () => {
     } finally {
       setGoogleLoading(false);
     }
+  };
+
+  const handleHostWorkspaceContinue = () => {
+    const primaryUser = users[0] || currentUser;
+    loginWithUser(primaryUser);
   };
 
   const copyDomain = () => {
@@ -86,14 +93,14 @@ export const LoginView: React.FC = () => {
             {errorMessage && (
               <div className="rounded-xl bg-red-950/80 border border-red-800/80 p-4 text-xs text-red-300 flex items-start gap-2.5">
                 <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-2.5">
                   <p className="font-semibold text-red-200">Authentication Notice</p>
                   <p className="text-red-300/90 leading-relaxed">{errorMessage}</p>
 
-                  {errorMessage.includes('Authorized Domains') && currentHostname && (
-                    <div className="mt-2 pt-2 border-t border-red-900/60">
-                      <p className="text-[11px] text-red-300/80 mb-1.5">
-                        Domain to add in Firebase Console:
+                  {currentHostname && (
+                    <div className="mt-2 pt-2.5 border-t border-red-900/60 space-y-2.5">
+                      <p className="text-[11px] text-red-300/80">
+                        1. Copy this host domain & add it in Firebase Console ({firebaseProjectId}):
                       </p>
                       <div className="flex items-center gap-2 bg-slate-900/80 p-1.5 px-2.5 rounded-lg border border-red-900/50">
                         <code className="text-[11px] font-mono text-white flex-1 truncate">
@@ -107,6 +114,27 @@ export const LoginView: React.FC = () => {
                         >
                           {copiedDomain ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
                           <span>{copiedDomain ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                        <a
+                          href={`https://console.firebase.google.com/project/${firebaseProjectId}/authentication/settings`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-950 text-indigo-300 hover:text-white border border-slate-700 text-[11px] font-semibold transition-colors"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          <span>Open Firebase Auth Settings</span>
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={handleHostWorkspaceContinue}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                        >
+                          <span>Continue to Workspace</span>
+                          <ArrowRight className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>

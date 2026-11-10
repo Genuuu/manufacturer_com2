@@ -26,7 +26,7 @@ import {
 import {
   testFirestoreConnection,
   auth,
-  googleProvider,
+  googleSignIn,
   db,
   handleFirestoreError,
   OperationType,
@@ -764,12 +764,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const loginWithGoogle = async (): Promise<{ success: boolean; message: string }> => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        setCachedAccessToken(credential.accessToken);
+      const signInRes = await googleSignIn();
+      if (!signInRes?.user) {
+        return { success: false, message: 'Google Sign-In was cancelled.' };
       }
-      const googleUser = result.user;
+      const googleUser = signInRes.user;
       const normalizedEmail = (googleUser.email || '').trim().toLowerCase();
 
       // Also check Firestore directly in case local state hasn't loaded yet

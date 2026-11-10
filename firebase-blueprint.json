@@ -5,58 +5,72 @@
       "description": "Supplier or manufacturer profile",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "website": { "type": "string" },
-        "contactPortal": { "type": "string" },
-        "productsOfInterest": { "type": "string" },
-        "notes": { "type": "string" },
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "maxLength": 500 },
+        "website": { "type": "string", "maxLength": 1000 },
+        "contactPortal": { "type": "string", "maxLength": 1000 },
+        "productsOfInterest": { "type": "string", "maxLength": 5000 },
+        "notes": { "type": "string", "maxLength": 10000 },
         "status": { "type": "string", "enum": ["Active", "Removed", "Archived"] },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "name", "status"]
     },
     "CommunicationEntry": {
       "title": "CommunicationEntry",
-      "description": "Communication log item with supplier",
+      "description": "Communication log item with supplier including email, portal, and multi-turn live chat transcripts",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "date": { "type": "string" },
-        "manufacturerId": { "type": "string" },
-        "manufacturerName": { "type": "string" },
-        "threadSelection": { "type": "string" },
-        "threadId": { "type": "string" },
-        "channel": { "type": "string" },
-        "subject": { "type": "string" },
-        "keyOutcome": { "type": "string" },
-        "status": { "type": "string" },
-        "nextAction": { "type": "string" },
-        "followUpDate": { "type": "string" },
-        "threadDoc": { "type": "string" },
-        "fullEmailText": { "type": "string" },
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "date": { "type": "string", "maxLength": 64 },
+        "manufacturerId": { "type": "string", "maxLength": 128 },
+        "manufacturerName": { "type": "string", "maxLength": 500 },
+        "threadSelection": { "type": "string", "maxLength": 128 },
+        "threadId": { "type": "string", "maxLength": 128 },
+        "channel": { "type": "string", "maxLength": 200 },
+        "subject": { "type": "string", "maxLength": 2000 },
+        "keyOutcome": { "type": "string", "maxLength": 20000 },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Completed",
+            "Awaiting Reply",
+            "Reply Received",
+            "Information Received",
+            "Pending Review",
+            "Action Required"
+          ]
+        },
+        "nextAction": { "type": "string", "maxLength": 5000 },
+        "followUpDate": { "type": "string", "maxLength": 64 },
+        "threadDoc": { "type": "string", "maxLength": 1000 },
+        "fullEmailText": { "type": "string", "maxLength": 100000 },
         "documentsReceived": { "type": "array" },
-        "informationReceived": { "type": "string" },
-        "entryKey": { "type": "string" },
-        "createdBy": { "type": "string" },
-        "createdAt": { "type": "string" }
+        "attachments": { "type": "array" },
+        "informationReceived": { "type": "string", "maxLength": 50000 },
+        "chatTurns": { "type": "array" },
+        "outboundSummary": { "type": "string", "maxLength": 20000 },
+        "inboundResponse": { "type": "string", "maxLength": 20000 },
+        "entryKey": { "type": "string", "maxLength": 128 },
+        "createdBy": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "date", "manufacturerId", "channel", "subject"]
     },
     "AppUser": {
       "title": "AppUser",
-      "description": "User account profile",
+      "description": "User account profile and role",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "email": { "type": "string" },
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "maxLength": 300 },
+        "email": { "type": "string", "maxLength": 320 },
         "role": { "type": "string", "enum": ["admin", "manager", "engineer", "auditor"] },
-        "department": { "type": "string" },
-        "avatar": { "type": "string" },
+        "department": { "type": "string", "maxLength": 300 },
+        "avatar": { "type": "string", "maxLength": 500 },
         "isActive": { "type": "boolean" },
-        "lastLogin": { "type": "string" }
+        "lastLogin": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "name", "email", "role"]
     },
@@ -65,16 +79,30 @@
       "description": "Audit trail log event",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "timestamp": { "type": "string" },
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "action": { "type": "string" },
-        "category": { "type": "string" },
-        "details": { "type": "string" },
-        "targetId": { "type": "string" }
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 300 },
+        "action": { "type": "string", "maxLength": 200 },
+        "category": { "type": "string", "enum": ["MANUFACTURER", "COMMUNICATION", "PERMISSION", "DATA"] },
+        "details": { "type": "string", "maxLength": 5000 },
+        "targetId": { "type": "string", "maxLength": 128 }
       },
-      "required": ["id", "timestamp", "userId", "action"]
+      "required": ["id", "timestamp", "userId", "action", "category"]
+    },
+    "AppSetting": {
+      "title": "AppSetting",
+      "description": "Application-wide configuration documents such as role permissions and Google Sheets backup metadata",
+      "type": "object",
+      "properties": {
+        "spreadsheetId": { "type": "string", "maxLength": 256 },
+        "spreadsheetUrl": { "type": "string", "maxLength": 1000 },
+        "spreadsheetTitle": { "type": "string", "maxLength": 500 },
+        "lastSyncedAt": { "type": "string", "maxLength": 64 },
+        "lastSyncedManufacturerCount": { "type": "number" },
+        "lastSyncedCommCount": { "type": "number" },
+        "lastSyncedHash": { "type": "string", "maxLength": 128 }
+      }
     }
   },
   "firestore": {
@@ -84,7 +112,7 @@
     },
     "/communications/{communicationId}": {
       "schema": { "$ref": "#/entities/CommunicationEntry" },
-      "description": "Collection of all communication entries"
+      "description": "Collection of all communication entries and thread messages"
     },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/AppUser" },
@@ -93,6 +121,10 @@
     "/auditLogs/{logId}": {
       "schema": { "$ref": "#/entities/AuditLogItem" },
       "description": "Collection of audit trail events"
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/AppSetting" },
+      "description": "Collection of application settings (permissions and googleSheetBackup)"
     }
   }
 }
