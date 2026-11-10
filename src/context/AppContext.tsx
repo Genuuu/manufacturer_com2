@@ -138,11 +138,27 @@ const HARDCODED_USER_EMAILS = new Set([
   'e.rostova@fabricateops.io',
 ]);
 
+const BOOTSTRAPPED_ADMIN_EMAILS = new Set([
+  'genukakisara@gmail.com',
+  '2020thilinasampath@gmail.com',
+]);
+
 function isHardcodedUser(u: Partial<AppUser> | null | undefined): boolean {
   if (!u) return true;
   if (u.id && HARDCODED_USER_IDS.has(u.id)) return true;
   if (u.email && HARDCODED_USER_EMAILS.has(u.email.toLowerCase())) return true;
   return false;
+}
+
+function syncAuthorizedEmailDoc(user: AppUser) {
+  const emailKey = (user.email || '').trim().toLowerCase();
+  if (!emailKey || isHardcodedUser(user)) return;
+  setDoc(doc(db, 'authorizedEmails', emailKey), {
+    email: emailKey,
+    userId: user.id,
+    role: user.role,
+    isActive: Boolean(user.isActive),
+  }).catch(() => {});
 }
 
 /**
@@ -228,14 +244,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const deletedManufacturerIdsRef = useRef<Set<string>>(new Set());
   const deletedCommIdsRef = useRef<Set<string>>(new Set());
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.IS_AUTH);
-      return saved === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>(() => {
     try {
@@ -412,12 +421,83 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (res.projectId) setFirebaseProjectId(res.projectId);
     });
 
-    const unsubscribeAuth = onAuthStateChanged(auth, firebaseUser => {
-      if (firebaseUser) {
-        setIsAuthenticated(true);
-        localStorage.setItem(STORAGE_KEYS.IS_AUTH, 'true');
+    const unsubscribeAuth = onAuthStateChanged(auth, async firebaseUser => {
+      if (!firebaseUser) {
+        setIsAuthenticated(false);
+        localStorage.removeItem(STORAGE_KEYS.IS_AUTH);
+        return;
       }
+
+      const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
+      if (!normalizedEmail) {
+        await signOut(auth).catch(() => {});
+        setCachedAccessToken(null);
+        setIsAuthenticated(false);
+        localStorage.removeItem(STORAGE_KEYS.IS_AUTH);
+        return;
+      }
+
+      let remoteUsers: AppUser[] = [];
+      try {
+        const snap = await getDocs(collection(db, 'users'));
+        snap.forEach(d => remoteUsers.push({ id: d.id, ...d.data() } as AppUser));
+      } catch {}
+
+      const allKnownUsers = deduplicateUsersList([...users, ...remoteUsers]);
+      const matched = allKnownUsers.find(
+        u => u.email.trim().toLowerCase() === normalizedEmail
+      );
+
+      if (!matched && !BOOTSTRAPPED_ADMIN_EMAILS.has(normalizedEmail)) {
+        // Unauthorized user — immediately sign out and block access
+        await signOut(auth).catch(() => {});
+        setCachedAccessToken(null);
+        setIsAuthenticated(false);
+        localStorage.removeItem(STORAGE_KEYS.IS_AUTH);
+        return;
+      }
+
+      if (matched && matched.isActive === false) {
+        // Deactivated user — immediately sign out and block access
+        await signOut(auth).catch(() => {});
+        setCachedAccessToken(null);
+        setIsAuthenticated(false);
+        localStorage.removeItem(STORAGE_KEYS.IS_AUTH);
+        return;
+      }
+
+      const activeUser: AppUser =
+        matched || {
+          id: `usr-g-${firebaseUser.uid.substring(0, 8)}`,
+          name: firebaseUser.displayName || normalizedEmail.split('@')[0],
+          email: normalizedEmail,
+          role: 'admin',
+          department: 'Procurement Management',
+          isActive: true,
+          avatar: (firebaseUser.displayName || normalizedEmail)
+            .split(' ')
+            .map(p => p[0])
+            .join('')
+            .toUpperCase()
+            .substring(0, 2),
+          lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        };
+
+      syncAuthorizedEmailDoc(activeUser);
+      setCurrentUser(activeUser);
+      setIsAuthenticated(true);
+      localStorage.setItem(STORAGE_KEYS.IS_AUTH, 'true');
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(activeUser));
     });
+
+    return () => {
+      unsubscribeAuth();
+    };
+  }, []);
+
+  // Only attach Firestore data listeners when user is authenticated & authorized
+  useEffect(() => {
+    if (!isAuthenticated) return;
 
     // Real-time Firestore Listeners — safely merge local and remote records so local additions are never lost
     const unsubManufacturers = onSnapshot(collection(db, 'manufacturers'), snapshot => {
@@ -502,6 +582,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setDoc(doc(db, 'users', keptUser.id), keptUser, { merge: true }).catch(() => {});
       });
 
+      dedupedRemote.forEach(syncAuthorizedEmailDoc);
+
       setUsers(prev => {
         const cleanPrev = deduplicateUsersList(prev);
         if (!uInitialSync) {
@@ -515,6 +597,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           );
           const remoteIds = new Set(dedupedRemote.map(r => r.id));
           combined.forEach(item => {
+            syncAuthorizedEmailDoc(item);
             if (!remoteIds.has(item.id)) {
               setDoc(doc(db, 'users', item.id), item).catch(err =>
                 console.warn('Sync user to Firestore notice:', err.message)
@@ -573,7 +656,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, err => console.warn('Firestore sheetBackup sync notice:', err.message));
 
     return () => {
-      unsubscribeAuth();
       unsubManufacturers();
       unsubCommunications();
       unsubUsers();
@@ -581,7 +663,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       unsubPermissions();
       unsubSheetBackup();
     };
-  }, []);
+  }, [isAuthenticated]);
 
   // Ensure currentUser stays synchronized with database users
   useEffect(() => {
@@ -771,7 +853,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const googleUser = signInRes.user;
       const normalizedEmail = (googleUser.email || '').trim().toLowerCase();
 
-      // Also check Firestore directly in case local state hasn't loaded yet
+      if (!normalizedEmail) {
+        await signOut(auth).catch(() => {});
+        setCachedAccessToken(null);
+        setIsAuthenticated(false);
+        localStorage.removeItem(STORAGE_KEYS.IS_AUTH);
+        return { success: false, message: 'Access Denied: Could not verify Google account email.' };
+      }
+
+      // Check Firestore directly in case local state hasn't loaded yet
       let remoteUsers: AppUser[] = [];
       try {
         const snap = await getDocs(collection(db, 'users'));
@@ -783,7 +873,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         u => u.email.trim().toLowerCase() === normalizedEmail
       );
 
+      // Strictly block any Google account that is not in the authorized users list (unless bootstrapped owner)
       if (!matched) {
+        if (!BOOTSTRAPPED_ADMIN_EMAILS.has(normalizedEmail)) {
+          await signOut(auth).catch(() => {});
+          setCachedAccessToken(null);
+          setIsAuthenticated(false);
+          localStorage.removeItem(STORAGE_KEYS.IS_AUTH);
+          return {
+            success: false,
+            message: `Access Denied: "${googleUser.email}" is not an authorized user. Only pre-approved team members added by an Administrator in Team & Access are permitted to sign in.`,
+          };
+        }
+
         const initials = (googleUser.displayName || 'G U')
           .split(' ')
           .map(p => p[0])
@@ -793,13 +895,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         matched = {
           id: `usr-g-${googleUser.uid.substring(0, 8)}`,
-          name: googleUser.displayName || 'Google User',
-          email: googleUser.email || 'user@company.com',
+          name: googleUser.displayName || normalizedEmail.split('@')[0],
+          email: normalizedEmail,
           role: 'admin',
           department: 'Procurement Management',
           isActive: true,
           avatar: initials || 'GU',
           lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        };
+      } else if (matched.isActive === false) {
+        await signOut(auth).catch(() => {});
+        setCachedAccessToken(null);
+        setIsAuthenticated(false);
+        localStorage.removeItem(STORAGE_KEYS.IS_AUTH);
+        return {
+          success: false,
+          message: `Access Revoked: The account "${googleUser.email}" has been deactivated by an Administrator.`,
         };
       } else {
         matched = {
@@ -809,6 +920,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
 
       const activeUser: AppUser = matched;
+      syncAuthorizedEmailDoc(activeUser);
+      allKnownUsers.forEach(syncAuthorizedEmailDoc);
+
       setUsers(prev =>
         deduplicateUsersList([...prev, activeUser], dupId => {
           deleteDoc(doc(db, 'users', dupId)).catch(() => {});
@@ -821,7 +935,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setIsAuthenticated(true);
       localStorage.setItem(STORAGE_KEYS.IS_AUTH, 'true');
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(activeUser));
-      addAuditLog('LOGIN_GOOGLE', 'PERMISSION', `Google user ${googleUser.email} authenticated`, activeUser.id);
+      addAuditLog('LOGIN_GOOGLE', 'PERMISSION', `Authorized Google user ${googleUser.email} signed in`, activeUser.id);
 
       return { success: true, message: 'Google Sign-In successful' };
     } catch (err: any) {
@@ -829,7 +943,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
         return {
           success: false,
-          message: 'The current domain is not added to Firebase Authorized Domains. To sign in with Google, add this domain in Firebase Console > Authentication > Settings > Authorized Domains.'
+          message: 'The current domain is not added to Firebase Authorized Domains. To sign in with Google, add this domain in Firebase Console > Authentication > Settings > Authorized Domains.',
         };
       }
       return { success: false, message: err.message || 'Google Authentication failed' };
@@ -1126,6 +1240,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setDoc(doc(db, 'users', existingByEmail.id), updatedExisting, { merge: true }).catch(err => {
         handleFirestoreError(err, OperationType.UPDATE, `users/${existingByEmail.id}`);
       });
+      syncAuthorizedEmailDoc(updatedExisting);
       return {
         success: true,
         message: `Updated existing member ${updatedExisting.name} (${updatedExisting.email})`,
@@ -1152,6 +1267,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setDoc(doc(db, 'users', newUser.id), newUser).catch(err => {
       handleFirestoreError(err, OperationType.WRITE, `users/${newUser.id}`);
     });
+    syncAuthorizedEmailDoc(newUser);
 
     addAuditLog('CREATE_USER', 'PERMISSION', `Added new team member ${newUser.name} as ${newUser.role}`);
     return { success: true, message: `User ${newUser.name} created successfully`, user: newUser };
@@ -1169,6 +1285,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setDoc(doc(db, 'users', userId), updated, { merge: true }).catch(err => {
             handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
           });
+          if (u.email && data.email && u.email.trim().toLowerCase() !== data.email.trim().toLowerCase()) {
+            deleteDoc(doc(db, 'authorizedEmails', u.email.trim().toLowerCase())).catch(() => {});
+          }
+          syncAuthorizedEmailDoc(updated);
           return updated;
         }
         return u;
@@ -1197,6 +1317,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setDoc(doc(db, 'users', userId), updated, { merge: true }).catch(err => {
             handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
           });
+          syncAuthorizedEmailDoc(updated);
           return updated;
         }
         return u;
@@ -1219,6 +1340,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     deleteDoc(doc(db, 'users', userId)).catch(err => {
       handleFirestoreError(err, OperationType.DELETE, `users/${userId}`);
     });
+    if (target?.email) {
+      deleteDoc(doc(db, 'authorizedEmails', target.email.trim().toLowerCase())).catch(() => {});
+    }
 
     addAuditLog('DELETE_USER', 'PERMISSION', `Deleted user account for ${target?.name || userId}`);
     return { success: true, message: `User ${target?.name || userId} deleted` };

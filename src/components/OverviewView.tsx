@@ -29,19 +29,33 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   onOpenCommModalWithManufacturer,
   onPreviewDoc,
 }) => {
-  const { manufacturers, communications, hasPermission, setActiveTab } = useApp();
+  const { manufacturers, communications, updateCommunication, hasPermission, setActiveTab } = useApp();
 
   // Filter by specific manufacturer or 'ALL'
   const [selectedMId, setSelectedMId] = useState<string>('ALL');
+  // Toggle to show/hide what requires an action
+  const [showActionRequiredPanel, setShowActionRequiredPanel] = useState<boolean>(false);
+  // Track per-card expanded action required details on supplier overview cards
+  const [expandedSupplierActionId, setExpandedSupplierActionId] = useState<string | null>(null);
+  // Inline quick-edit state for updating what requires action (nextAction)
+  const [editingActionId, setEditingActionId] = useState<string | null>(null);
+  const [editingActionText, setEditingActionText] = useState<string>('');
 
   // Overall Metrics
   const activeComms = communications.filter(
     c => c.status !== 'Completed' && c.status !== 'Reply Received'
   );
   const awaitingReply = communications.filter(c => c.status === 'Awaiting Reply');
-  const actionRequired = communications.filter(
-    c => c.status === 'Action Required' || c.status === 'Pending Review'
-  );
+  const actionRequired = communications
+    .filter(
+      c =>
+        c.status === 'Action Required' ||
+        c.status === 'Pending Review' ||
+        (Boolean(c.nextAction && c.nextAction.trim()) &&
+          c.status !== 'Completed' &&
+          c.status !== 'Reply Received')
+    )
+    .sort(compareCommByEntryOrder);
   const activeManufacturers = manufacturers.filter(m => m.status === 'Active');
 
   // Selected Manufacturer Data
@@ -50,6 +64,23 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     selectedMId === 'ALL'
       ? communications
       : communications.filter(c => c.manufacturerId === selectedMId);
+
+  const scopedActionRequired =
+    selectedMId === 'ALL'
+      ? actionRequired
+      : actionRequired.filter(c => c.manufacturerId === selectedMId);
+
+  const handleSaveQuickActionText = (commId: string) => {
+    if (!hasPermission('canEditCommunication')) return;
+    updateCommunication(commId, { nextAction: editingActionText.trim() || undefined });
+    setEditingActionId(null);
+    setEditingActionText('');
+  };
+
+  const handleMarkCompleted = (commId: string) => {
+    if (!hasPermission('canEditCommunication')) return;
+    updateCommunication(commId, { status: 'Completed' });
+  };
 
   // Status Counts for Selected Scope
   const scopeStatusCounts = {
@@ -61,7 +92,12 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
       c => c.status === 'Information Received'
     ).length,
     'Action Required': manufacturerComms.filter(
-      c => c.status === 'Action Required' || c.status === 'Pending Review'
+      c =>
+        c.status === 'Action Required' ||
+        c.status === 'Pending Review' ||
+        (Boolean(c.nextAction && c.nextAction.trim()) &&
+          c.status !== 'Completed' &&
+          c.status !== 'Reply Received')
     ).length,
   };
 
@@ -116,24 +152,45 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             </div>
           </div>
 
-          {/* Manufacturer Selector Dropdown */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 w-full md:w-auto">
-            <span className="text-xs text-slate-300 font-medium flex items-center gap-1">
-              <Filter className="h-3.5 w-3.5 text-indigo-400" />
-              <span>Inspect Supplier:</span>
-            </span>
-            <select
-              value={selectedMId}
-              onChange={e => setSelectedMId(e.target.value)}
-              className="w-full sm:w-64 px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+          {/* Manufacturer Selector Dropdown + Action Required Button */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => setShowActionRequiredPanel(prev => !prev)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                showActionRequiredPanel
+                  ? 'bg-rose-600 text-white border-rose-500 shadow-xs'
+                  : actionRequired.length > 0
+                  ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border-rose-500/40'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
             >
-              <option value="ALL">All Manufacturers ({manufacturers.length} Suppliers)</option>
-              {manufacturers.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.id} · {m.name} ({m.status})
-                </option>
-              ))}
-            </select>
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                {showActionRequiredPanel
+                  ? 'Hide What Requires Action'
+                  : `Show What Requires Action (${actionRequired.length})`}
+              </span>
+            </button>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-300 font-medium hidden xl:flex items-center gap-1">
+                <Filter className="h-3.5 w-3.5 text-indigo-400" />
+                <span>Supplier:</span>
+              </span>
+              <select
+                value={selectedMId}
+                onChange={e => setSelectedMId(e.target.value)}
+                className="w-full sm:w-60 px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              >
+                <option value="ALL">All Manufacturers ({manufacturers.length} Suppliers)</option>
+                {manufacturers.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.id} · {m.name} ({m.status})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -184,20 +241,274 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             </div>
           </div>
 
-          <div className="bg-slate-800/80 border border-slate-700 p-3 sm:p-3.5 rounded-xl space-y-1">
-            <div className="flex items-center justify-between text-slate-400">
+          {/* Interactive Card 4: Action Required */}
+          <div
+            onClick={() => setShowActionRequiredPanel(prev => !prev)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setShowActionRequiredPanel(prev => !prev);
+              }
+            }}
+            className={`p-3 sm:p-3.5 rounded-xl space-y-1 transition-all cursor-pointer select-none ${
+              showActionRequiredPanel
+                ? 'bg-rose-950/90 border-2 border-rose-500 ring-2 ring-rose-500/30'
+                : 'bg-slate-800/80 hover:bg-slate-800 border border-slate-700 hover:border-rose-500/60'
+            }`}
+          >
+            <div className="flex items-center justify-between text-slate-300">
               <span className="text-[10px] font-bold uppercase tracking-wider">Action Required</span>
               <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
             </div>
-            <div className="text-xl sm:text-2xl font-black text-rose-400">
-              {actionRequired.length}
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-xl sm:text-2xl font-black text-rose-400">
+                {actionRequired.length}
+              </div>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-500/20 text-rose-200 border border-rose-500/30">
+                {showActionRequiredPanel ? 'Hide Details ▲' : 'View What Needs Action ▼'}
+              </span>
             </div>
             <div className="text-[10px] text-rose-300/90 font-medium">
-              Engineering / review needed
+              Click to inspect required actions
             </div>
           </div>
         </div>
       </div>
+
+      {/* EXPANDABLE "WHAT REQUIRES AN ACTION" INSPECTOR PANEL */}
+      {showActionRequiredPanel && (
+        <div className="bg-white rounded-2xl border-2 border-rose-200 shadow-sm overflow-hidden animate-in fade-in">
+          <div className="p-4 bg-rose-950 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-bold text-sm sm:text-base text-white">
+                    Action Required & Pending Review Breakdown
+                  </h2>
+                  <span className="text-[10px] font-mono bg-rose-500/30 text-rose-100 border border-rose-400/30 px-2 py-0.5 rounded font-semibold">
+                    {scopedActionRequired.length} {scopedActionRequired.length === 1 ? 'Item' : 'Items'}
+                    {selectedMId !== 'ALL' && selectedManufacturer ? ` for ${selectedManufacturer.name}` : ' Total'}
+                  </span>
+                </div>
+                <p className="text-xs text-rose-200 mt-0.5">
+                  Showing exact engineering decisions, reviews, and follow-up actions required across threads
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('communications')}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-800/80 hover:bg-rose-800 text-rose-100 border border-rose-700 transition-colors cursor-pointer"
+              >
+                Open in Comm Logs →
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowActionRequiredPanel(false)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900/70 hover:bg-slate-900 text-slate-200 border border-rose-800 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-5 bg-rose-50/30 space-y-3">
+            {scopedActionRequired.length === 0 ? (
+              <div className="p-8 bg-white rounded-xl border border-slate-200 text-center space-y-2">
+                <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto" />
+                <div className="font-bold text-sm text-slate-900">
+                  No Pending Action Items {selectedMId !== 'ALL' && selectedManufacturer ? `for ${selectedManufacturer.name}` : ''}
+                </div>
+                <p className="text-xs text-slate-500">
+                  All communications are either completed, awaiting vendor reply, or informational.
+                </p>
+                {selectedMId !== 'ALL' && actionRequired.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMId('ALL')}
+                    className="mt-1 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                  >
+                    Show All {actionRequired.length} Action Items Across All Suppliers
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {scopedActionRequired.map(item => {
+                  const isEditingThis = editingActionId === item.id;
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-white rounded-xl border border-rose-200/90 p-3.5 sm:p-4 shadow-2xs space-y-3 hover:border-rose-300 transition-all"
+                    >
+                      {/* Top Bar: Supplier, Thread, Status & Date */}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs font-bold bg-slate-900 text-white px-2 py-0.5 rounded">
+                            {item.manufacturerId}
+                          </span>
+                          <span className="font-bold text-sm text-slate-900">
+                            {item.manufacturerName}
+                          </span>
+                          <span className="font-mono text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded">
+                            Thread {item.threadId}
+                          </span>
+                          <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                            {item.channel}
+                          </span>
+                          <span className="font-mono text-xs text-slate-500">
+                            Logged: {item.date}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {item.followUpDate && (
+                            <span className="font-mono text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded">
+                              Follow-up Due: {item.followUpDate}
+                            </span>
+                          )}
+                          <span
+                            className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                              item.status === 'Action Required'
+                                ? 'bg-rose-100 text-rose-800 border-rose-300'
+                                : item.status === 'Pending Review'
+                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                            }`}
+                          >
+                            {item.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Highlighted Box: WHAT REQUIRES AN ACTION */}
+                      <div className="p-3 bg-rose-50/80 border border-rose-200 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
+                            <AlertCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                            <span>What Requires Action:</span>
+                          </span>
+                          {hasPermission('canEditCommunication') && !isEditingThis && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingActionId(item.id);
+                                setEditingActionText(item.nextAction || item.keyOutcome || '');
+                              }}
+                              className="text-[11px] font-semibold text-rose-700 hover:text-rose-900 underline cursor-pointer"
+                            >
+                              {item.nextAction ? 'Edit Action Note' : '+ Specify Exact Action'}
+                            </button>
+                          )}
+                        </div>
+
+                        {isEditingThis ? (
+                          <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                            <input
+                              type="text"
+                              value={editingActionText}
+                              onChange={e => setEditingActionText(e.target.value)}
+                              placeholder="Specify what action is required (e.g. Approve PCB stackup v2, confirm MOQ pricing)..."
+                              className="flex-1 px-3 py-1.5 text-xs bg-white border border-rose-300 rounded-lg text-slate-900 font-medium focus:outline-hidden focus:ring-2 focus:ring-rose-500"
+                            />
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveQuickActionText(item.id)}
+                                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                              >
+                                Save Action
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingActionId(null);
+                                  setEditingActionText('');
+                                }}
+                                className="px-2.5 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-semibold cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs sm:text-sm font-bold text-rose-950 leading-relaxed">
+                            {item.nextAction ? (
+                              item.nextAction
+                            ) : (
+                              <span>
+                                {item.keyOutcome || item.subject}
+                                <span className="ml-2 text-[11px] font-normal text-rose-700 italic">
+                                  (Derived from latest outcome — click &ldquo;+ Specify Exact Action&rdquo; to customize)
+                                </span>
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Subject & Key Outcome Context */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
+                        <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200/80">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                            Communication Subject:
+                          </span>
+                          <div className="font-semibold text-slate-900">{item.subject}</div>
+                        </div>
+                        <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200/80">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                            Key Outcome / Context:
+                          </span>
+                          <div className="text-slate-700 font-medium line-clamp-2">{item.keyOutcome}</div>
+                        </div>
+                      </div>
+
+                      {/* Direct Action Footer */}
+                      <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedMId(item.manufacturerId)}
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold transition-colors cursor-pointer"
+                          >
+                            Inspect {item.manufacturerName}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onOpenCommModalWithManufacturer(item.manufacturerId)}
+                            disabled={!hasPermission('canLogCommunication')}
+                            className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold transition-colors disabled:opacity-40 cursor-pointer"
+                          >
+                            + Log Follow-up / Reply
+                          </button>
+                        </div>
+
+                        {hasPermission('canEditCommunication') && (
+                          <button
+                            type="button"
+                            onClick={() => handleMarkCompleted(item.id)}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>Mark Action Completed</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* QUICK SUPPLIER PILL SELECTOR BAR */}
       <div className="bg-white rounded-xl border border-slate-200 p-2.5 shadow-2xs flex items-center gap-2 overflow-x-auto scrollbar-none">
@@ -213,6 +524,19 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           }`}
         >
           All Suppliers ({manufacturers.length})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowActionRequiredPanel(prev => !prev)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer border ${
+            showActionRequiredPanel
+              ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
+              : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+          }`}
+        >
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          <span>What Requires Action ({actionRequired.length})</span>
         </button>
 
         {manufacturers.map(m => {
@@ -274,7 +598,21 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                {scopedActionRequired.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowActionRequiredPanel(prev => !prev)}
+                    className="w-full sm:w-auto justify-center px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    <span>
+                      {showActionRequiredPanel
+                        ? 'Hide Required Actions'
+                        : `Show What Requires Action (${scopedActionRequired.length})`}
+                    </span>
+                  </button>
+                )}
                 <button
                   onClick={() =>
                     onOpenCommModalWithManufacturer(selectedManufacturer.id)
@@ -386,10 +724,17 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                   <span className="font-medium text-blue-900">Info Received</span>
                   <span className="font-bold text-blue-950 font-mono">{scopeStatusCounts['Information Received']}</span>
                 </div>
-                <div className="p-2 bg-rose-50/60 rounded-lg border border-rose-100 flex items-center justify-between">
-                  <span className="font-medium text-rose-900">Action Required</span>
+                <button
+                  type="button"
+                  onClick={() => setShowActionRequiredPanel(prev => !prev)}
+                  className="p-2 bg-rose-50 hover:bg-rose-100/80 rounded-lg border border-rose-200 flex items-center justify-between transition-colors cursor-pointer text-left"
+                  title="Click to show what requires an action"
+                >
+                  <span className="font-semibold text-rose-900 underline decoration-rose-300">
+                    Action Required (View)
+                  </span>
                   <span className="font-bold text-rose-950 font-mono">{scopeStatusCounts['Action Required']}</span>
-                </div>
+                </button>
               </div>
             </div>
 
@@ -433,47 +778,74 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               </div>
             ) : (
               <div className="space-y-3">
-                {threads.map(t => (
-                  <div
-                    key={t.threadId}
-                    className="p-4 bg-slate-50 rounded-xl border border-slate-200/90 text-xs space-y-2.5"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold bg-indigo-600 text-white px-2 py-0.5 rounded">
-                          {t.threadId}
-                        </span>
-                        <span className="font-bold text-slate-900 text-sm">
-                          {t.firstMsg.subject}
+                {threads.map(t => {
+                  const needsAction =
+                    t.latestMsg.status === 'Action Required' ||
+                    t.latestMsg.status === 'Pending Review' ||
+                    (Boolean(t.latestMsg.nextAction && t.latestMsg.nextAction.trim()) &&
+                      t.latestMsg.status !== 'Completed' &&
+                      t.latestMsg.status !== 'Reply Received');
+
+                  return (
+                    <div
+                      key={t.threadId}
+                      className={`p-4 rounded-xl border text-xs space-y-2.5 ${
+                        needsAction
+                          ? 'bg-rose-50/30 border-rose-200'
+                          : 'bg-slate-50 border-slate-200/90'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold bg-indigo-600 text-white px-2 py-0.5 rounded">
+                            {t.threadId}
+                          </span>
+                          <span className="font-bold text-slate-900 text-sm">
+                            {t.firstMsg.subject}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full border ${
+                            t.latestMsg.status === 'Completed' || t.latestMsg.status === 'Reply Received'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : t.latestMsg.status === 'Action Required'
+                              ? 'bg-rose-100 text-rose-800 border-rose-300'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {t.latestMsg.status}
                         </span>
                       </div>
-                      <span
-                        className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full border ${
-                          t.latestMsg.status === 'Completed' || t.latestMsg.status === 'Reply Received'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}
-                      >
-                        {t.latestMsg.status}
-                      </span>
-                    </div>
 
-                    <p className="text-slate-700 font-medium bg-white p-2.5 rounded-lg border border-slate-200/80">
-                      <strong className="text-slate-900">Latest Outcome: </strong>
-                      {t.latestMsg.keyOutcome}
-                    </p>
+                      <p className="text-slate-700 font-medium bg-white p-2.5 rounded-lg border border-slate-200/80">
+                        <strong className="text-slate-900">Latest Outcome: </strong>
+                        {t.latestMsg.keyOutcome}
+                      </p>
 
-                    {t.latestMsg.nextAction && (
-                      <div className="text-[11px] text-amber-900 bg-amber-50/70 px-3 py-1.5 rounded-lg border border-amber-200/60">
-                        <strong>Next Step: </strong> {t.latestMsg.nextAction}
+                      {(t.latestMsg.nextAction || needsAction) && (
+                        <div className="text-xs text-rose-950 bg-rose-50 px-3 py-2 rounded-lg border border-rose-200 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <strong className="text-rose-800 uppercase text-[10px] tracking-wider mr-1.5">
+                              What Requires Action:
+                            </strong>
+                            <span className="font-semibold">
+                              {t.latestMsg.nextAction || t.latestMsg.keyOutcome}
+                            </span>
+                          </div>
+                          {t.latestMsg.followUpDate && (
+                            <span className="font-mono text-[10px] font-bold bg-white text-rose-800 border border-rose-200 px-2 py-0.5 rounded">
+                              Due: {t.latestMsg.followUpDate}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                        <span>{t.messages.length} entries in thread · Last updated {t.latestMsg.date}</span>
                       </div>
-                    )}
-
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
-                      <span>{t.messages.length} entries in thread · Last updated {t.latestMsg.date}</span>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -502,8 +874,17 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               const pendingCount = mComms.filter(
                 c => c.status !== 'Completed' && c.status !== 'Reply Received'
               ).length;
+              const mActionItems = mComms.filter(
+                c =>
+                  c.status === 'Action Required' ||
+                  c.status === 'Pending Review' ||
+                  (Boolean(c.nextAction && c.nextAction.trim()) &&
+                    c.status !== 'Completed' &&
+                    c.status !== 'Reply Received')
+              );
               const sortedMComms = [...mComms].sort(compareCommByEntryOrder);
               const latestComm = sortedMComms[sortedMComms.length - 1];
+              const isActionExpanded = expandedSupplierActionId === m.id;
 
               return (
                 <div
@@ -554,6 +935,57 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                         <div className="text-[10px] text-amber-800 font-medium">Open</div>
                       </div>
                     </div>
+
+                    {/* Per-Supplier "Show What Requires Action" Toggle & Breakdown */}
+                    {mActionItems.length > 0 && (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        className="rounded-xl border border-rose-200 bg-rose-50/70 overflow-hidden"
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedSupplierActionId(isActionExpanded ? null : m.id)
+                          }
+                          className="w-full px-3 py-2 flex items-center justify-between text-xs font-bold text-rose-800 hover:bg-rose-100/70 transition-colors cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <AlertCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                            <span>
+                              {mActionItems.length} Action Required —{' '}
+                              {isActionExpanded ? 'Hide Details' : 'Show What Needs Action'}
+                            </span>
+                          </span>
+                          <span className="text-[10px] font-mono bg-rose-200/70 text-rose-900 px-1.5 py-0.5 rounded">
+                            {isActionExpanded ? '▲' : '▼'}
+                          </span>
+                        </button>
+
+                        {isActionExpanded && (
+                          <div className="p-2.5 bg-white border-t border-rose-200 space-y-2 text-xs">
+                            {mActionItems.map(act => (
+                              <div
+                                key={act.id}
+                                className="p-2 rounded-lg bg-rose-50/50 border border-rose-100 space-y-1"
+                              >
+                                <div className="flex items-center justify-between text-[10px] font-mono text-rose-700">
+                                  <span className="font-bold">{act.threadId} · {act.status}</span>
+                                  <span>{act.date}</span>
+                                </div>
+                                <div className="font-bold text-slate-900 text-[11px]">
+                                  {act.nextAction || act.keyOutcome || act.subject}
+                                </div>
+                                {act.nextAction && (
+                                  <div className="text-[10px] text-slate-500 truncate">
+                                    Re: {act.subject}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Latest Activity Box */}
                     {latestComm ? (

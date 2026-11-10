@@ -3,15 +3,40 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================================
-    // Global Helpers & Primitives
+    // Global Helpers & Authentication Primitives
     // =========================================================================
 
     function incoming() {
       return request.resource.data;
     }
 
+    function isSignedIn() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email.lower() == 'genukakisara@gmail.com' ||
+        request.auth.token.email.lower() == '2020thilinasampath@gmail.com'
+      );
+    }
+
+    function isAuthorizedUser() {
+      return isBootstrappedAdmin() || (
+        isSignedIn()
+        && exists(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower()))
+        && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.isActive == true
+      );
+    }
+
     function isValidId(id) {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-|]+$');
+    }
+
+    function isValidEmailKey(emailKey) {
+      return emailKey is string && emailKey.size() >= 3 && emailKey.size() <= 320;
     }
 
     function isValidString(val, maxLen) {
@@ -128,6 +153,15 @@ service cloud.firestore {
         && isOptionalString(data, 'lastLogin', 64);
     }
 
+    function isValidAuthorizedEmail(data) {
+      return data.keys().hasAll(['email', 'userId', 'role', 'isActive'])
+        && data.keys().hasOnly(['email', 'userId', 'role', 'isActive'])
+        && isValidString(data.email, 320)
+        && isValidId(data.userId)
+        && data.role in ['admin', 'manager', 'engineer', 'auditor']
+        && data.isActive is bool;
+    }
+
     function isValidAuditLog(data) {
       return data.keys().hasAll(['id', 'timestamp', 'action', 'category'])
         && data.keys().hasOnly([
@@ -179,42 +213,49 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // Collection Match Blocks
+    // Collection Match Blocks (Restricted to Authorized Users Only)
     // =========================================================================
 
     match /manufacturers/{manufacturerId} {
-      allow get: if isValidId(manufacturerId);
-      allow list: if true;
-      allow create, update: if isValidId(manufacturerId) && isValidManufacturer(incoming());
-      allow delete: if isValidId(manufacturerId);
+      allow get: if isAuthorizedUser() && isValidId(manufacturerId);
+      allow list: if isSignedIn();
+      allow create, update: if isAuthorizedUser() && isValidId(manufacturerId) && isValidManufacturer(incoming());
+      allow delete: if isAuthorizedUser() && isValidId(manufacturerId);
     }
 
     match /communications/{communicationId} {
-      allow get: if isValidId(communicationId);
-      allow list: if true;
-      allow create, update: if isValidId(communicationId) && isValidCommunication(incoming());
-      allow delete: if isValidId(communicationId);
+      allow get: if isAuthorizedUser() && isValidId(communicationId);
+      allow list: if isSignedIn();
+      allow create, update: if isAuthorizedUser() && isValidId(communicationId) && isValidCommunication(incoming());
+      allow delete: if isAuthorizedUser() && isValidId(communicationId);
     }
 
     match /users/{userId} {
-      allow get: if isValidId(userId);
-      allow list: if true;
-      allow create, update: if isValidId(userId) && isValidUser(incoming());
-      allow delete: if isValidId(userId);
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if isSignedIn();
+      allow create, update: if isAuthorizedUser() && isValidId(userId) && isValidUser(incoming());
+      allow delete: if isAuthorizedUser() && isValidId(userId);
+    }
+
+    match /authorizedEmails/{emailId} {
+      allow get: if isSignedIn() && isValidEmailKey(emailId);
+      allow list: if isSignedIn();
+      allow create, update: if isAuthorizedUser() && isValidEmailKey(emailId) && isValidAuthorizedEmail(incoming());
+      allow delete: if isAuthorizedUser() && isValidEmailKey(emailId);
     }
 
     match /auditLogs/{logId} {
-      allow get: if isValidId(logId);
-      allow list: if true;
-      allow create, update: if isValidId(logId) && isValidAuditLog(incoming());
-      allow delete: if isValidId(logId);
+      allow get: if isAuthorizedUser() && isValidId(logId);
+      allow list: if isSignedIn();
+      allow create, update: if isAuthorizedUser() && isValidId(logId) && isValidAuditLog(incoming());
+      allow delete: if isAuthorizedUser() && isValidId(logId);
     }
 
     match /settings/{settingId} {
-      allow get: if isValidId(settingId);
-      allow list: if true;
-      allow create, update: if isValidSetting(settingId, incoming());
-      allow delete: if isValidId(settingId);
+      allow get: if isAuthorizedUser() && isValidId(settingId);
+      allow list: if isSignedIn();
+      allow create, update: if isAuthorizedUser() && isValidSetting(settingId, incoming());
+      allow delete: if isAuthorizedUser() && isValidId(settingId);
     }
 
     // Default-deny catch-all

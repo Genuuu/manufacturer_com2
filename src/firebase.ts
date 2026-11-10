@@ -113,29 +113,26 @@ async function signInWithGisFallback(): Promise<{ user: User; accessToken: strin
           return;
         }
         const token = response.access_token as string;
-        setCachedAccessToken(token);
 
-        let email = 'genukakisara@gmail.com';
-        let displayName = 'Workspace User';
-        let uid = 'gis-user-' + Math.random().toString(36).substring(2, 8);
-        try {
-          const infoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (infoRes.ok) {
-            const info = await infoRes.json();
-            email = info.email || email;
-            displayName = info.name || email.split('@')[0] || displayName;
-            uid = info.sub || uid;
-          }
-        } catch {
-          // Keep default profile info if userinfo endpoint fails
+        const infoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!infoRes.ok) {
+          reject(new Error('Failed to verify Google account identity.'));
+          return;
+        }
+        const info = await infoRes.json();
+        if (!info?.email || !info?.email_verified) {
+          reject(new Error('Google account email could not be verified.'));
+          return;
         }
 
+        setCachedAccessToken(token);
+
         const syntheticUser = {
-          uid,
-          email,
-          displayName,
+          uid: info.sub || 'gis-' + info.email,
+          email: info.email,
+          displayName: info.name || info.email.split('@')[0],
           emailVerified: true,
           isAnonymous: false,
         } as unknown as User;
@@ -233,4 +230,18 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 export async function testFirestoreConnection() {
   return { connected: Boolean(firebaseConfig.projectId), projectId: firebaseConfig.projectId };
 }
+
+export async function fetchFirebaseAuthorizedDomains(): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/projects?key=${firebaseConfig.apiKey}`
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data?.authorizedDomains) ? data.authorizedDomains : [];
+  } catch {
+    return [];
+  }
+}
+
 

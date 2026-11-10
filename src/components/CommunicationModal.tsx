@@ -488,14 +488,24 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
     // 8. Determine Status based on pre-entered direction
     let detectedStatus: CommStatus =
       detectedType === 'sent' ? 'Awaiting Reply' : 'Information Received';
+    let detectedNextAction = '';
 
     if (detectedType !== 'sent') {
+      const actionLine = bodyLines.find(l =>
+        /action required|please confirm|let us know|awaiting your confirmation|please approve|kindly advise/i.test(
+          l
+        )
+      );
       if (
+        actionLine ||
         /action required|please confirm|let us know|awaiting your confirmation|please approve|kindly advise/i.test(
           primaryMessage
         )
       ) {
         detectedStatus = 'Action Required';
+        detectedNextAction = actionLine
+          ? actionLine.slice(0, 180)
+          : `Review supplier request and confirm next steps with ${manufacturerName}`;
       } else {
         detectedStatus = 'Information Received';
       }
@@ -509,7 +519,7 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
       subject: extractedSubject,
       keyOutcome: extractedOutcome,
       status: detectedStatus,
-      nextAction: '',
+      nextAction: detectedNextAction,
       followUpDate: '',
       informationReceived: formattedInfoReceived,
       inboundContent: localInbound,
@@ -1241,6 +1251,45 @@ export const CommunicationModal: React.FC<CommunicationModalProps> = ({
                 className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-mono"
               />
             </div>
+          </div>
+
+          {/* What Requires Action / Next Action Step */}
+          <div
+            className={`p-3 rounded-xl border transition-all ${
+              status === 'Action Required' || status === 'Pending Review'
+                ? 'bg-rose-50/70 border-rose-200'
+                : 'bg-slate-50 border-slate-200'
+            }`}
+          >
+            <label
+              className={`block font-semibold mb-1 flex items-center justify-between ${
+                status === 'Action Required' || status === 'Pending Review'
+                  ? 'text-rose-900'
+                  : 'text-slate-700'
+              }`}
+            >
+              <span>
+                {status === 'Action Required' || status === 'Pending Review'
+                  ? '⚡ What Requires an Action? (Required Action / Review Details)'
+                  : 'Next Action / Follow-up Step (Optional)'}
+              </span>
+              {(status === 'Action Required' || status === 'Pending Review') && (
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-rose-200/80 text-rose-900 px-2 py-0.5 rounded">
+                  Shown in Action Queue
+                </span>
+              )}
+            </label>
+            <input
+              type="text"
+              value={nextAction}
+              onChange={e => setNextAction(e.target.value)}
+              placeholder={
+                status === 'Action Required' || status === 'Pending Review'
+                  ? 'Specify exactly what requires action (e.g., Approve revised Gerber v2, confirm MOQ pricing, send NDA)...'
+                  : 'Optional next step or action item to track...'
+              }
+              className="w-full p-2 bg-white border border-slate-200 rounded-lg text-slate-900 font-medium"
+            />
           </div>
 
           {/* Information Received / Technical Specifications (For Received Mail & Live Chat) */}

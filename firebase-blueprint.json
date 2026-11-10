@@ -74,6 +74,18 @@
       },
       "required": ["id", "name", "email", "role"]
     },
+    "AuthorizedEmail": {
+      "title": "AuthorizedEmail",
+      "description": "Allowlisted team member email index for Firestore rule authorization",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 320 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["admin", "manager", "engineer", "auditor"] },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["email", "userId", "role", "isActive"]
+    },
     "AuditLogItem": {
       "title": "AuditLogItem",
       "description": "Audit trail log event",
@@ -117,6 +129,10 @@
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/AppUser" },
       "description": "Collection of registered team users"
+    },
+    "/authorizedEmails/{emailId}": {
+      "schema": { "$ref": "#/entities/AuthorizedEmail" },
+      "description": "Collection of allowlisted active team emails indexed by lowercase email"
     },
     "/auditLogs/{logId}": {
       "schema": { "$ref": "#/entities/AuditLogItem" },

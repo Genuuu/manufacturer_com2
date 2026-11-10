@@ -17,12 +17,18 @@ import {
 export const SummaryMetricsPanel: React.FC = () => {
   const { communications, manufacturers } = useApp();
   const [isExpanded, setIsExpanded] = useState(true);
+  const [showActionDetails, setShowActionDetails] = useState(false);
 
   // Key Metrics Calculations
   const activeComms = communications.filter(c => c.status !== 'Completed' && c.status !== 'Reply Received');
   const awaitingReply = communications.filter(c => c.status === 'Awaiting Reply');
   const actionRequired = communications.filter(
-    c => c.status === 'Action Required' || c.status === 'Pending Review'
+    c =>
+      c.status === 'Action Required' ||
+      c.status === 'Pending Review' ||
+      (Boolean(c.nextAction && c.nextAction.trim()) &&
+        c.status !== 'Completed' &&
+        c.status !== 'Reply Received')
   );
   const activeManufacturers = manufacturers.filter(m => m.status === 'Active');
 
@@ -131,17 +137,37 @@ export const SummaryMetricsPanel: React.FC = () => {
               </div>
             </div>
 
-            {/* Card 3: Action Required */}
-            <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-1">
+            {/* Card 3: Action Required (Clickable to show what requires an action) */}
+            <div
+              onClick={() => setShowActionDetails(prev => !prev)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setShowActionDetails(prev => !prev);
+                }
+              }}
+              className={`p-3.5 rounded-xl border shadow-2xs space-y-1 cursor-pointer transition-all select-none ${
+                showActionDetails
+                  ? 'bg-rose-50 border-rose-400 ring-2 ring-rose-500/20'
+                  : 'bg-white border-slate-200 hover:border-rose-300'
+              }`}
+            >
               <div className="flex items-center justify-between text-slate-500">
                 <span className="text-[11px] font-semibold uppercase tracking-wider">Action Required</span>
                 <AlertCircle className="h-4 w-4 text-rose-600" />
               </div>
-              <div className="text-2xl font-black text-rose-600">
-                {actionRequired.length}
+              <div className="flex items-baseline justify-between gap-2">
+                <div className="text-2xl font-black text-rose-600">
+                  {actionRequired.length}
+                </div>
+                <span className="text-[10px] font-bold text-rose-700 underline">
+                  {showActionDetails ? 'Hide Action List' : 'Show What Needs Action'}
+                </span>
               </div>
               <div className="text-[10px] text-rose-700 font-medium">
-                Requires team review
+                Click to view required actions
               </div>
             </div>
 
@@ -160,6 +186,54 @@ export const SummaryMetricsPanel: React.FC = () => {
             </div>
 
           </div>
+
+          {/* Expandable Breakdown of What Requires an Action */}
+          {showActionDetails && (
+            <div className="p-4 bg-white rounded-xl border border-rose-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-xs text-rose-900 flex items-center gap-1.5">
+                  <AlertCircle className="h-4 w-4 text-rose-600" />
+                  <span>What Requires an Action ({actionRequired.length})</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowActionDetails(false)}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+              {actionRequired.length === 0 ? (
+                <div className="text-xs text-slate-500 py-2">
+                  No communications currently require action.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {actionRequired.map(item => (
+                    <div
+                      key={item.id}
+                      className="p-3 rounded-lg bg-rose-50/60 border border-rose-200 text-xs space-y-1"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900">
+                          {item.manufacturerId} · {item.manufacturerName} ({item.threadId})
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800">
+                          {item.status}
+                        </span>
+                      </div>
+                      <div className="font-bold text-rose-950">
+                        Required Action: {item.nextAction || item.keyOutcome || item.subject}
+                      </div>
+                      <div className="text-[11px] text-slate-600 truncate">
+                        Subject: {item.subject} · {item.date}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Middle Row: 2 Charts + Recent Manufacturer Updates */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

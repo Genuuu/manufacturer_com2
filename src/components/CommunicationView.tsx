@@ -23,6 +23,8 @@ import {
   ArrowRight,
   Send,
   Paperclip,
+  AlertCircle,
+  CheckCircle2,
 } from 'lucide-react';
 import { ThreadConversationModal } from './ThreadConversationModal';
 import { SummaryMetricsPanel } from './SummaryMetricsPanel';
@@ -59,6 +61,7 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
   const [activeThreadModalId, setActiveThreadModalId] = useState<string | null>(null);
   const [expandedThreadIds, setExpandedThreadIds] = useState<Set<string>>(new Set());
+  const [showActionRequiredDrawer, setShowActionRequiredDrawer] = useState<boolean>(false);
 
   const toggleThreadExpand = (threadId: string) => {
     setExpandedThreadIds(prev => {
@@ -96,6 +99,18 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
     c => c.followUpDate && c.status !== 'Completed'
   ).length;
 
+  const isCommActionRequired = (c: CommunicationEntry) =>
+    c.status === 'Action Required' ||
+    c.status === 'Pending Review' ||
+    (Boolean(c.nextAction && c.nextAction.trim()) &&
+      c.status !== 'Completed' &&
+      c.status !== 'Reply Received');
+
+  const actionRequiredItems = useMemo(
+    () => communications.filter(isCommActionRequired).sort(compareCommByEntryOrder),
+    [communications]
+  );
+
   // Filtered dataset
   const filteredComms = useMemo(() => {
     return communications.filter(c => {
@@ -114,8 +129,12 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
       }
 
       // Status filter
-      if (selectedStatus !== 'ALL' && c.status !== selectedStatus) {
-        return false;
+      if (selectedStatus !== 'ALL') {
+        if (selectedStatus === 'ACTION_REQUIRED_GROUP') {
+          if (!isCommActionRequired(c)) return false;
+        } else if (c.status !== selectedStatus) {
+          return false;
+        }
       }
 
       // Follow-up toggle
@@ -346,6 +365,40 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
           </button>
 
           <button
+            onClick={() => {
+              const nextStatus =
+                selectedStatus === 'ACTION_REQUIRED_GROUP' ? 'ALL' : 'ACTION_REQUIRED_GROUP';
+              setSelectedStatus(nextStatus);
+              if (nextStatus === 'ACTION_REQUIRED_GROUP') {
+                setShowActionRequiredDrawer(true);
+              }
+            }}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
+              selectedStatus === 'ACTION_REQUIRED_GROUP' || selectedStatus === 'Action Required'
+                ? 'bg-rose-600 text-white font-semibold shadow-2xs'
+                : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+            }`}
+          >
+            <AlertCircle className="h-3 w-3" />
+            <span>Action Required ({actionRequiredItems.length})</span>
+          </button>
+
+          <button
+            onClick={() => setShowActionRequiredDrawer(prev => !prev)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer border ${
+              showActionRequiredDrawer
+                ? 'bg-slate-900 text-white border-slate-900'
+                : 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50'
+            }`}
+            title="Toggle panel showing what requires an action"
+          >
+            <Eye className="h-3 w-3" />
+            <span>
+              {showActionRequiredDrawer ? 'Hide What Requires Action' : 'Show What Requires Action'}
+            </span>
+          </button>
+
+          <button
             onClick={() => setOnlyWithFollowup(!onlyWithFollowup)}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
               onlyWithFollowup
@@ -358,6 +411,168 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* EXPANDABLE "WHAT REQUIRES AN ACTION" SUMMARY DRAWER */}
+      {showActionRequiredDrawer && (
+        <div className="bg-white rounded-2xl border-2 border-rose-200 shadow-sm overflow-hidden animate-in fade-in">
+          <div className="p-3.5 sm:p-4 bg-rose-950 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-start sm:items-center gap-2.5">
+              <div className="h-8 w-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0">
+                <AlertCircle className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-bold text-xs sm:text-sm text-white">
+                    What Requires an Action ({actionRequiredItems.length})
+                  </h3>
+                  <span className="text-[10px] font-mono bg-rose-500/30 text-rose-100 px-2 py-0.5 rounded font-semibold">
+                    Action Queue & Pending Reviews
+                  </span>
+                </div>
+                <p className="text-[11px] text-rose-200">
+                  Direct view of every supplier thread requiring engineering review, approval, or follow-up action
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedStatus(
+                    selectedStatus === 'ACTION_REQUIRED_GROUP' ? 'ALL' : 'ACTION_REQUIRED_GROUP'
+                  )
+                }
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                  selectedStatus === 'ACTION_REQUIRED_GROUP'
+                    ? 'bg-white text-rose-900 border-white'
+                    : 'bg-rose-800/80 hover:bg-rose-800 text-rose-100 border-rose-700'
+                }`}
+              >
+                {selectedStatus === 'ACTION_REQUIRED_GROUP'
+                  ? 'Showing Only Action Items in List'
+                  : 'Filter List to Action Items Only'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowActionRequiredDrawer(false)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900/70 hover:bg-slate-900 text-slate-200 border border-rose-800 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          <div className="p-3.5 sm:p-4 bg-rose-50/30 space-y-2.5">
+            {actionRequiredItems.length === 0 ? (
+              <div className="p-6 bg-white rounded-xl border border-slate-200 text-center space-y-1.5">
+                <CheckCircle2 className="h-7 w-7 text-emerald-500 mx-auto" />
+                <div className="font-bold text-xs sm:text-sm text-slate-900">
+                  All Caught Up — No Communications Currently Require Action
+                </div>
+                <p className="text-xs text-slate-500">
+                  Set any communication status to &ldquo;Action Required&rdquo; or &ldquo;Pending Review&rdquo;, or enter a Next Action step to track it here.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {actionRequiredItems.map(item => (
+                  <div
+                    key={item.id}
+                    className="bg-white rounded-xl border border-rose-200 p-3.5 shadow-2xs flex flex-col justify-between space-y-2.5 hover:border-rose-300 transition-all"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-[11px] font-bold bg-slate-900 text-white px-2 py-0.5 rounded">
+                            {item.manufacturerId}
+                          </span>
+                          <span className="font-bold text-slate-900">{item.manufacturerName}</span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveThreadModalId(item.threadId)}
+                            className="font-mono text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 rounded cursor-pointer"
+                          >
+                            {item.threadId}
+                          </button>
+                        </div>
+
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            item.status === 'Action Required'
+                              ? 'bg-rose-100 text-rose-800 border-rose-300'
+                              : item.status === 'Pending Review'
+                              ? 'bg-amber-100 text-amber-800 border-amber-300'
+                              : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                          }`}
+                        >
+                          {item.status}
+                        </span>
+                      </div>
+
+                      {/* Explicit Box Showing WHAT Requires Action */}
+                      <div className="p-2.5 bg-rose-50 border border-rose-200/90 rounded-lg space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-rose-800">
+                          <span className="flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3 text-rose-600 shrink-0" />
+                            <span>Required Action:</span>
+                          </span>
+                          {item.followUpDate && (
+                            <span className="font-mono text-rose-900 bg-white/80 px-1.5 py-0.2 rounded border border-rose-200">
+                              Due: {item.followUpDate}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs font-bold text-rose-950 leading-relaxed">
+                          {item.nextAction || item.keyOutcome || item.subject}
+                        </div>
+                      </div>
+
+                      <div className="text-[11px] text-slate-600">
+                        <span className="font-semibold text-slate-800">{item.subject}</span>
+                        {item.nextAction && item.keyOutcome && (
+                          <p className="text-slate-500 line-clamp-1 mt-0.5">{item.keyOutcome}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setActiveThreadModalId(item.threadId)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold cursor-pointer"
+                        >
+                          Open Thread {item.threadId}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenCommModal(item)}
+                          disabled={!hasPermission('canEditCommunication')}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold disabled:opacity-40 cursor-pointer"
+                        >
+                          Edit / Specify Action
+                        </button>
+                      </div>
+
+                      {hasPermission('canEditCommunication') && (
+                        <button
+                          type="button"
+                          onClick={() => handleStatusChange(item.id, 'Completed')}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1 cursor-pointer"
+                        >
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>Complete</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* QUICK MANUFACTURER FILTER PILLS */}
       {manufacturers.length > 0 && (
@@ -511,12 +726,13 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
               className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
             >
               <option value="ALL">All Statuses</option>
+              <option value="ACTION_REQUIRED_GROUP">⚡ All Action Required & Pending Review</option>
+              <option value="Action Required">Action Required</option>
+              <option value="Pending Review">Pending Review</option>
               <option value="Awaiting Reply">Awaiting Reply</option>
               <option value="Reply Received">Reply Received</option>
               <option value="Information Received">Information Received</option>
               <option value="Completed">Completed</option>
-              <option value="Pending Review">Pending Review</option>
-              <option value="Action Required">Action Required</option>
             </select>
           </div>
 
@@ -552,11 +768,18 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
           ) : (
             threadGroups.map(group => {
               const isCollapsed = !expandedThreadIds.has(group.threadId);
+              const threadActionMsgs = group.messages.filter(isCommActionRequired);
+              const latestActionMsg =
+                threadActionMsgs.length > 0
+                  ? threadActionMsgs[threadActionMsgs.length - 1]
+                  : null;
 
               return (
                 <div
                   key={group.threadId}
-                  className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden transition-all"
+                  className={`bg-white rounded-2xl border shadow-2xs overflow-hidden transition-all ${
+                    latestActionMsg ? 'border-rose-300' : 'border-slate-200'
+                  }`}
                 >
                   {/* Thread Header Bar */}
                   <div
@@ -580,6 +803,12 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
                           <span className="text-[11px] text-indigo-300 font-mono bg-indigo-500/20 px-1.5 py-0.2 rounded">
                             {group.messages.length} {group.messages.length === 1 ? 'entry' : 'entries'}
                           </span>
+                          {latestActionMsg && (
+                            <span className="text-[10px] font-bold bg-rose-500/30 text-rose-200 border border-rose-400/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <AlertCircle className="h-3 w-3 text-rose-300" />
+                              <span>Action Required</span>
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-slate-200 font-medium line-clamp-1 mt-0.5">
                           {group.primarySubject}
@@ -594,6 +823,8 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
                             ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                             : group.status === 'Information Received'
                             ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                            : group.status === 'Action Required'
+                            ? 'bg-rose-500/25 text-rose-200 border-rose-500/40'
                             : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                         }`}
                       >
@@ -620,32 +851,65 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
                     </div>
                   </div>
 
-                  {/* If Collapsed: Show Compact 1-Line Latest Activity Bar */}
+                  {/* If Collapsed: Show Compact Latest Activity Bar + Explicit Action Required Callout */}
                   {isCollapsed ? (
-                    <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200/80 text-xs flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 text-slate-600 truncate max-w-2xl">
-                        <span className="font-mono text-[11px] font-semibold text-slate-500">
-                          Latest ({group.latestMsg.date}):
-                        </span>
-                        <span className="font-medium text-slate-800 truncate">
-                          {group.latestMsg.keyOutcome}
-                        </span>
+                    <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200/80 text-xs space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-slate-600 truncate max-w-2xl">
+                          <span className="font-mono text-[11px] font-semibold text-slate-500">
+                            Latest ({group.latestMsg.date}):
+                          </span>
+                          <span className="font-medium text-slate-800 truncate">
+                            {group.latestMsg.keyOutcome}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          {group.latestMsg.followUpDate && group.status !== 'Completed' && (
+                            <span className="text-[11px] font-mono text-amber-700 font-semibold flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              Follow-up: {group.latestMsg.followUpDate}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => setActiveThreadModalId(group.threadId)}
+                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                          >
+                            Full View →
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        {group.latestMsg.followUpDate && group.status !== 'Completed' && (
-                          <span className="text-[11px] font-mono text-amber-700 font-semibold flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            Follow-up: {group.latestMsg.followUpDate}
-                          </span>
-                        )}
-                        <button
-                          onClick={() => setActiveThreadModalId(group.threadId)}
-                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
-                        >
-                          Full View →
-                        </button>
-                      </div>
+                      {latestActionMsg && (
+                        <div className="px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-rose-950">
+                            <AlertCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                            <span className="text-[10px] font-black uppercase tracking-wider text-rose-800">
+                              What Requires Action:
+                            </span>
+                            <span className="font-bold text-xs">
+                              {latestActionMsg.nextAction || latestActionMsg.keyOutcome || latestActionMsg.subject}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => onOpenCommModal(latestActionMsg)}
+                              disabled={!hasPermission('canEditCommunication')}
+                              className="text-[11px] font-semibold text-rose-700 hover:text-rose-900 underline disabled:opacity-40 cursor-pointer"
+                            >
+                              Edit Action
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleThreadExpand(group.threadId)}
+                              className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900 cursor-pointer"
+                            >
+                              Inspect Thread ↓
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     /* Expanded Thread Messages Stream */
@@ -893,17 +1157,44 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
                                     </div>
                                   )}
 
-                                  {/* Next Action & Follow up */}
-                                  {(comm.nextAction || comm.followUpDate) && (
-                                    <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-lg text-xs flex flex-wrap items-center justify-between gap-2">
-                                      <div className="text-amber-950 font-medium">
-                                        <strong>Next Action: </strong> {comm.nextAction || 'Follow up with vendor'}
-                                      </div>
-                                      {comm.followUpDate && (
-                                        <span className="font-mono text-[11px] font-semibold text-amber-900 bg-amber-100 px-2 py-0.5 rounded">
-                                          Due: {comm.followUpDate}
+                                  {/* What Requires Action & Follow up */}
+                                  {(comm.nextAction || comm.followUpDate || isCommActionRequired(comm)) && (
+                                    <div
+                                      className={`p-2.5 rounded-lg border text-xs flex flex-wrap items-center justify-between gap-2 ${
+                                        isCommActionRequired(comm)
+                                          ? 'bg-rose-50/90 border-rose-200 text-rose-950'
+                                          : 'bg-amber-50/70 border-amber-200 text-amber-950'
+                                      }`}
+                                    >
+                                      <div className="font-medium flex items-center gap-1.5 flex-wrap">
+                                        <AlertCircle
+                                          className={`h-3.5 w-3.5 shrink-0 ${
+                                            isCommActionRequired(comm) ? 'text-rose-600' : 'text-amber-600'
+                                          }`}
+                                        />
+                                        <strong className="uppercase text-[10px] tracking-wider">
+                                          What Requires Action:
+                                        </strong>
+                                        <span className="font-bold">
+                                          {comm.nextAction || comm.keyOutcome || 'Review and follow up with supplier'}
                                         </span>
-                                      )}
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {comm.followUpDate && (
+                                          <span className="font-mono text-[11px] font-semibold bg-white/80 px-2 py-0.5 rounded border border-rose-200/80">
+                                            Due: {comm.followUpDate}
+                                          </span>
+                                        )}
+                                        {hasPermission('canEditCommunication') && (
+                                          <button
+                                            type="button"
+                                            onClick={() => onOpenCommModal(comm)}
+                                            className="text-[11px] font-semibold underline hover:opacity-80 cursor-pointer"
+                                          >
+                                            {comm.nextAction ? 'Edit Action' : '+ Specify Action'}
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
                                   )}
 

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { fetchFirebaseAuthorizedDomains } from '../firebase';
 import {
   Layers,
   Shield,
@@ -9,17 +10,28 @@ import {
   Copy,
   Check,
   ExternalLink,
-  ArrowRight,
+  UserX,
 } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
-  const { loginWithGoogle, loginWithUser, users, currentUser, firebaseProjectId } = useApp();
+  const { loginWithGoogle, firebaseProjectId } = useApp();
 
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [copiedDomain, setCopiedDomain] = useState(false);
+  const [liveAuthorizedDomains, setLiveAuthorizedDomains] = useState<string[]>([]);
 
   const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isDomainError = Boolean(
+    errorMessage &&
+      (errorMessage.includes('Authorized Domains') ||
+        errorMessage.includes('unauthorized-domain') ||
+        errorMessage.includes('not authorized in Firebase Console'))
+  );
+  const isUnauthorizedUserError = Boolean(
+    errorMessage &&
+      (errorMessage.includes('Access Denied') || errorMessage.includes('Access Revoked'))
+  );
 
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
@@ -28,17 +40,29 @@ export const LoginView: React.FC = () => {
       const res = await loginWithGoogle();
       if (!res.success) {
         setErrorMessage(res.message);
+        if (
+          res.message.includes('Authorized Domains') ||
+          res.message.includes('unauthorized-domain') ||
+          res.message.includes('not authorized in Firebase Console')
+        ) {
+          const domains = await fetchFirebaseAuthorizedDomains();
+          setLiveAuthorizedDomains(domains);
+        }
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to authenticate with Google.');
+      const msg = err.message || 'Failed to authenticate with Google.';
+      setErrorMessage(msg);
+      if (
+        msg.includes('Authorized Domains') ||
+        msg.includes('unauthorized-domain') ||
+        msg.includes('not authorized in Firebase Console')
+      ) {
+        const domains = await fetchFirebaseAuthorizedDomains();
+        setLiveAuthorizedDomains(domains);
+      }
     } finally {
       setGoogleLoading(false);
     }
-  };
-
-  const handleHostWorkspaceContinue = () => {
-    const primaryUser = users[0] || currentUser;
-    loginWithUser(primaryUser);
   };
 
   const copyDomain = () => {
@@ -74,33 +98,39 @@ export const LoginView: React.FC = () => {
         <div className="mt-4 flex items-center justify-center gap-2">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-800/50 shadow-inner">
             <Shield className="h-3.5 w-3.5 text-emerald-400" />
-            <span>Protected Workspace Access</span>
+            <span>Authorized Personnel Only</span>
           </span>
         </div>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10 px-4 sm:px-0">
         <div className="bg-slate-800/90 backdrop-blur-xl py-8 px-6 shadow-2xl rounded-2xl border border-slate-700/80 sm:px-10">
-          
           <div className="space-y-6">
             <div className="text-center space-y-1">
-              <p className="text-sm font-semibold text-slate-200">Sign In with Google</p>
+              <p className="text-sm font-semibold text-slate-200">Restricted Workspace Sign-In</p>
               <p className="text-xs text-slate-400">
-                Single sign-on with your verified Google account. Access is restricted to authorized team members.
+                Sign in with your pre-authorized Google account. Unregistered accounts are strictly denied access.
               </p>
             </div>
 
             {errorMessage && (
               <div className="rounded-xl bg-red-950/80 border border-red-800/80 p-4 text-xs text-red-300 flex items-start gap-2.5">
-                <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+                {isUnauthorizedUserError ? (
+                  <UserX className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+                )}
                 <div className="flex-1 space-y-2.5">
-                  <p className="font-semibold text-red-200">Authentication Notice</p>
+                  <p className="font-semibold text-red-200">
+                    {isUnauthorizedUserError ? 'Unauthorized AccountBlocked' : 'Authentication Notice'}
+                  </p>
                   <p className="text-red-300/90 leading-relaxed">{errorMessage}</p>
 
-                  {currentHostname && (
+                  {isDomainError && currentHostname && (
                     <div className="mt-2 pt-2.5 border-t border-red-900/60 space-y-2.5">
                       <p className="text-[11px] text-red-300/80">
-                        1. Copy this host domain & add it in Firebase Console ({firebaseProjectId}):
+                        Copy this host domain & add it in Firebase Console (Project:{' '}
+                        <strong>{firebaseProjectId}</strong>):
                       </p>
                       <div className="flex items-center gap-2 bg-slate-900/80 p-1.5 px-2.5 rounded-lg border border-red-900/50">
                         <code className="text-[11px] font-mono text-white flex-1 truncate">
@@ -112,30 +142,36 @@ export const LoginView: React.FC = () => {
                           className="text-xs text-indigo-300 hover:text-white flex items-center gap-1 shrink-0 cursor-pointer"
                           title="Copy hostname to clipboard"
                         >
-                          {copiedDomain ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                          {copiedDomain ? (
+                            <Check className="h-3.5 w-3.5 text-emerald-400" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
                           <span>{copiedDomain ? 'Copied' : 'Copy'}</span>
                         </button>
                       </div>
 
-                      <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                      {liveAuthorizedDomains.length > 0 && (
+                        <div className="p-2 rounded-lg bg-slate-900/70 border border-red-900/40 text-[10px] text-slate-300 space-y-1">
+                          <div className="font-semibold text-amber-300">
+                            Currently authorized in "{firebaseProjectId}":
+                          </div>
+                          <div className="font-mono text-[10px] text-slate-400 break-all">
+                            {liveAuthorizedDomains.join(', ')}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="pt-1">
                         <a
                           href={`https://console.firebase.google.com/project/${firebaseProjectId}/authentication/settings`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-950 text-indigo-300 hover:text-white border border-slate-700 text-[11px] font-semibold transition-colors"
+                          className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-950 text-indigo-300 hover:text-white border border-slate-700 text-[11px] font-semibold transition-colors"
                         >
                           <ExternalLink className="h-3.5 w-3.5" />
                           <span>Open Firebase Auth Settings</span>
                         </a>
-
-                        <button
-                          type="button"
-                          onClick={handleHostWorkspaceContinue}
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold transition-colors cursor-pointer"
-                        >
-                          <span>Continue to Workspace</span>
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </button>
                       </div>
                     </div>
                   )}
@@ -186,14 +222,14 @@ export const LoginView: React.FC = () => {
           <div className="mt-8 pt-6 border-t border-slate-700/60 text-center">
             <p className="text-xs text-slate-400 flex items-center justify-center gap-1.5">
               <Lock className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-              <span>Google OAuth Authentication Enforced</span>
+              <span>Allowlist-Only Google OAuth Enforcement</span>
             </p>
           </div>
         </div>
 
         {/* Footer info */}
         <p className="mt-6 text-center text-xs text-slate-500">
-          © {new Date().getFullYear()} FabricateOps Procurement System. Internal Use Only.
+          © {new Date().getFullYear()} FabricateOps Procurement System. Authorized Team Members Only.
         </p>
       </div>
     </div>
