@@ -19,6 +19,13 @@ import {
   FileText,
 } from 'lucide-react';
 
+export interface TemplateCustomVariable {
+  key: string; // e.g. "Lead_Time" or "Target_Price"
+  label: string; // e.g. "Target Price"
+  defaultValue?: string;
+  description?: string;
+}
+
 export interface EmailTemplate {
   id: string;
   title: string;
@@ -26,7 +33,30 @@ export interface EmailTemplate {
   subject: string;
   body: string;
   description?: string;
+  customVariables?: TemplateCustomVariable[];
   updatedAt?: string;
+}
+
+export const STANDARD_SYSTEM_VARIABLES = [
+  { key: 'Supplier_Name', label: 'Supplier Name', category: 'Supplier' },
+  { key: 'Contact_Name', label: 'Recipient / Contact', category: 'Supplier' },
+  { key: 'Product_Name', label: 'Product / Part Name', category: 'Item' },
+  { key: 'Quantity', label: 'Target Quantity', category: 'Item' },
+  { key: 'Sender_Name', label: 'Sender Name', category: 'Profile' },
+  { key: 'Position', label: 'Position', category: 'Profile' },
+  { key: 'Sender_Email', label: 'Sender Email', category: 'Profile' },
+  { key: 'Company_Name', label: 'Company Name', category: 'Company' },
+];
+
+export function extractPlaceholdersFromText(text: string): string[] {
+  const matches = text.match(/\{\{([a-zA-Z0-9_\s-]+)\}\}/g);
+  if (!matches) return [];
+  const set = new Set<string>();
+  matches.forEach(m => {
+    const raw = m.slice(2, -2).trim();
+    if (raw) set.add(raw);
+  });
+  return Array.from(set);
 }
 
 const STORAGE_KEY = 'fabricateops_email_templates_v1';
@@ -201,6 +231,9 @@ export const EmailTemplatesView: React.FC = () => {
   const [companyName, setCompanyName] = useState<string>('FabricateOps');
   const [senderEmail, setSenderEmail] = useState<string>(currentUser?.email || '');
 
+  // Custom variables specific to the active template
+  const [customVariableValues, setCustomVariableValues] = useState<Record<string, string>>({});
+
   // Copy & Log Feedback
   const [copiedField, setCopiedField] = useState<'subject' | 'body' | 'all' | null>(null);
   const [loggedSuccessMsg, setLoggedSuccessMsg] = useState<string | null>(null);
@@ -213,6 +246,10 @@ export const EmailTemplatesView: React.FC = () => {
   const [formDescription, setFormDescription] = useState<string>('');
   const [formSubject, setFormSubject] = useState<string>('');
   const [formBody, setFormBody] = useState<string>('');
+  const [formCustomVariables, setFormCustomVariables] = useState<TemplateCustomVariable[]>([]);
+  const [newVarKey, setNewVarKey] = useState<string>('');
+  const [newVarLabel, setNewVarLabel] = useState<string>('');
+  const [newVarDefault, setNewVarDefault] = useState<string>('');
 
   // Keep senderName, position, and email synced with currentUser when user switches
   useEffect(() => {
@@ -323,29 +360,85 @@ export const EmailTemplatesView: React.FC = () => {
     [templates, selectedTemplateId, filteredTemplates]
   );
 
+  // Detect all placeholders across active template (subject + body)
+  const activeTemplatePlaceholders = useMemo(() => {
+    if (!activeTemplate) return [];
+    const fromText = extractPlaceholdersFromText(`${activeTemplate.subject} ${activeTemplate.body}`);
+    const definedKeys = (activeTemplate.customVariables || []).map(v => v.key);
+    const combinedKeys = Array.from(new Set([...fromText, ...definedKeys]));
+    
+    // Filter out standard built-in keys
+    const standardKeysLower = new Set(
+      STANDARD_SYSTEM_VARIABLES.map(v => v.key.toLowerCase()).concat(['department'])
+    );
+
+    return combinedKeys
+      .filter(k => !standardKeysLower.has(k.toLowerCase()))
+      .map(k => {
+        const foundDef = (activeTemplate.customVariables || []).find(
+          v => v.key.toLowerCase() === k.toLowerCase()
+        );
+        return {
+          key: k,
+          label: foundDef?.label || k.replace(/_/g, ' '),
+          defaultValue: foundDef?.defaultValue || '',
+        };
+      });
+  }, [activeTemplate]);
+
   // Replace {{Placeholders}} with current variable values
-  const fillVariables = (text: string): string => {
+  // When forPreview is true, renders variables within brackets [Value] or [Placeholder] if empty
+  const fillVariables = (text: string, forPreview = false): string => {
     const supplierLabel = selectedManufacturer ? selectedManufacturer.name : '';
-    return text
-      .replace(/\{\{Supplier_Name\}\}/gi, supplierLabel)
-      .replace(/\{\{Contact_Name\}\}/gi, contactName)
-      .replace(/\{\{Product_Name\}\}/gi, productName)
-      .replace(/\{\{Quantity\}\}/gi, quantity)
-      .replace(/\{\{Sender_Name\}\}/gi, senderName || currentUser?.name || '')
-      .replace(/\{\{Position\}\}/gi, senderPosition || currentUser?.department || '')
-      .replace(/\{\{Department\}\}/gi, senderPosition || currentUser?.department || '')
-      .replace(/\{\{Sender_Email\}\}/gi, senderEmail || currentUser?.email || '')
-      .replace(/\{\{Company_Name\}\}/gi, companyName || 'FabricateOps');
+    
+    const resolveVar = (value: string | undefined, key: string): string => {
+      if (forPreview) {
+        return value && value.trim() ? `[${value.trim()}]` : `[${key}]`;
+      }
+      return value || '';
+    };
+
+    let res = text
+      .replace(/\{\{Supplier_Name\}\}/gi, resolveVar(supplierLabel, 'Supplier_Name'))
+      .replace(/\{\{Contact_Name\}\}/gi, resolveVar(contactName, 'Contact_Name'))
+      .replace(/\{\{Product_Name\}\}/gi, resolveVar(productName, 'Product_Name'))
+      .replace(/\{\{Quantity\}\}/gi, resolveVar(quantity, 'Quantity'))
+      .replace(/\{\{Sender_Name\}\}/gi, resolveVar(senderName || currentUser?.name, 'Sender_Name'))
+      .replace(/\{\{Position\}\}/gi, resolveVar(senderPosition || currentUser?.department, 'Position'))
+      .replace(/\{\{Department\}\}/gi, resolveVar(senderPosition || currentUser?.department, 'Position'))
+      .replace(/\{\{Sender_Email\}\}/gi, resolveVar(senderEmail || currentUser?.email, 'Sender_Email'))
+      .replace(/\{\{Company_Name\}\}/gi, resolveVar(companyName, 'Company_Name'));
+
+    // Replace custom template-specific variables
+    activeTemplatePlaceholders.forEach(cv => {
+      const val = customVariableValues[cv.key] !== undefined ? customVariableValues[cv.key] : cv.defaultValue;
+      const regex = new RegExp(`\\{\\{${cv.key}\\}\\}`, 'gi');
+      res = res.replace(regex, resolveVar(val, cv.key));
+    });
+
+    return res;
   };
 
+  // For copy and mailto: Clean filled output
   const compiledSubject = useMemo(
-    () => (activeTemplate ? fillVariables(activeTemplate.subject) : ''),
-    [activeTemplate, selectedManufacturer, contactName, productName, quantity, senderName, senderPosition, senderEmail, companyName]
+    () => (activeTemplate ? fillVariables(activeTemplate.subject, false) : ''),
+    [activeTemplate, selectedManufacturer, contactName, productName, quantity, senderName, senderPosition, senderEmail, companyName, customVariableValues, activeTemplatePlaceholders]
   );
 
   const compiledBody = useMemo(
-    () => (activeTemplate ? fillVariables(activeTemplate.body) : ''),
-    [activeTemplate, selectedManufacturer, contactName, productName, quantity, senderName, senderPosition, senderEmail, companyName]
+    () => (activeTemplate ? fillVariables(activeTemplate.body, false) : ''),
+    [activeTemplate, selectedManufacturer, contactName, productName, quantity, senderName, senderPosition, senderEmail, companyName, customVariableValues, activeTemplatePlaceholders]
+  );
+
+  // For visual screen preview: Variables shown within brackets [Value] or [Variable]
+  const previewSubject = useMemo(
+    () => (activeTemplate ? fillVariables(activeTemplate.subject, true) : ''),
+    [activeTemplate, selectedManufacturer, contactName, productName, quantity, senderName, senderPosition, senderEmail, companyName, customVariableValues, activeTemplatePlaceholders]
+  );
+
+  const previewBody = useMemo(
+    () => (activeTemplate ? fillVariables(activeTemplate.body, true) : ''),
+    [activeTemplate, selectedManufacturer, contactName, productName, quantity, senderName, senderPosition, senderEmail, companyName, customVariableValues, activeTemplatePlaceholders]
   );
 
   const handleCopy = async (type: 'subject' | 'body' | 'all') => {
@@ -399,8 +492,12 @@ export const EmailTemplatesView: React.FC = () => {
     setFormDescription('');
     setFormSubject('Inquiry: {{Product_Name}} ({{Quantity}}) — {{Supplier_Name}}');
     setFormBody(
-      `Dear {{Contact_Name}},\n\nWe are reaching out to {{Supplier_Name}} regarding {{Product_Name}} ({{Quantity}}).\n\nBest regards,\n{{Sender_Name}}`
+      `Dear {{Contact_Name}},\n\nWe are reaching out to {{Supplier_Name}} regarding {{Product_Name}} ({{Quantity}}).\n\nBest regards,\n{{Sender_Name}}\n{{Position}}`
     );
+    setFormCustomVariables([]);
+    setNewVarKey('');
+    setNewVarLabel('');
+    setNewVarDefault('');
     setIsEditorOpen(true);
   };
 
@@ -412,13 +509,65 @@ export const EmailTemplatesView: React.FC = () => {
     setFormDescription(tpl.description || '');
     setFormSubject(tpl.subject);
     setFormBody(tpl.body);
+    setFormCustomVariables(tpl.customVariables ? [...tpl.customVariables] : []);
+    setNewVarKey('');
+    setNewVarLabel('');
+    setNewVarDefault('');
     setIsEditorOpen(true);
+  };
+
+  const handleAddCustomVariableToForm = () => {
+    const rawKey = newVarKey.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+    if (!rawKey) return;
+    // Check if already exists in standard or form variables
+    const exists = formCustomVariables.some(v => v.key.toLowerCase() === rawKey.toLowerCase());
+    if (exists) return;
+
+    const label = newVarLabel.trim() || rawKey.replace(/_/g, ' ');
+    setFormCustomVariables(prev => [
+      ...prev,
+      {
+        key: rawKey,
+        label,
+        defaultValue: newVarDefault.trim(),
+      },
+    ]);
+    setNewVarKey('');
+    setNewVarLabel('');
+    setNewVarDefault('');
+  };
+
+  const handleRemoveCustomVariableFromForm = (keyToRemove: string) => {
+    setFormCustomVariables(prev => prev.filter(v => v.key !== keyToRemove));
+  };
+
+  const handleInsertPlaceholderIntoBody = (placeholderKey: string) => {
+    setFormBody(prev => `${prev} {{${placeholderKey}}}`);
   };
 
   const handleSaveTemplateForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEditTemplates) return;
     if (!formTitle.trim() || !formSubject.trim() || !formBody.trim()) return;
+
+    // Also auto-extract any extra placeholders from subject and body that aren't yet in customVariables
+    const usedPlaceholders = extractPlaceholdersFromText(`${formSubject} ${formBody}`);
+    const standardKeysLower = new Set(
+      STANDARD_SYSTEM_VARIABLES.map(v => v.key.toLowerCase()).concat(['department'])
+    );
+    const existingKeysLower = new Set(formCustomVariables.map(v => v.key.toLowerCase()));
+
+    const mergedVariables: TemplateCustomVariable[] = [...formCustomVariables];
+    usedPlaceholders.forEach(k => {
+      if (!standardKeysLower.has(k.toLowerCase()) && !existingKeysLower.has(k.toLowerCase())) {
+        mergedVariables.push({
+          key: k,
+          label: k.replace(/_/g, ' '),
+          defaultValue: '',
+        });
+        existingKeysLower.add(k.toLowerCase());
+      }
+    });
 
     const now = new Date().toISOString().split('T')[0];
     if (editingTemplate) {
@@ -429,6 +578,7 @@ export const EmailTemplatesView: React.FC = () => {
         description: formDescription.trim(),
         subject: formSubject.trim(),
         body: formBody,
+        customVariables: mergedVariables,
         updatedAt: now,
       };
       const nextList = templates.map(t => (t.id === updated.id ? updated : t));
@@ -442,6 +592,7 @@ export const EmailTemplatesView: React.FC = () => {
         description: formDescription.trim(),
         subject: formSubject.trim(),
         body: formBody,
+        customVariables: mergedVariables,
         updatedAt: now,
       };
       const nextList = [newTpl, ...templates];
@@ -746,6 +897,42 @@ export const EmailTemplatesView: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Template-Specific Custom Fields (if any) */}
+              {activeTemplatePlaceholders.length > 0 && (
+                <div className="pt-2.5 border-t border-slate-200/60 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1">
+                      <span>Specific Variables for this Template ({activeTemplatePlaceholders.length})</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      Changes update the live preview below
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                    {activeTemplatePlaceholders.map(cv => (
+                      <div key={cv.key}>
+                        <label className="block text-[10px] font-semibold text-slate-700 mb-1">
+                          {cv.label} <span className="font-mono text-slate-400">{'{{' + cv.key + '}}'}</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={customVariableValues[cv.key] !== undefined ? customVariableValues[cv.key] : cv.defaultValue}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setCustomVariableValues(prev => ({
+                              ...prev,
+                              [cv.key]: val,
+                            }));
+                          }}
+                          placeholder={cv.defaultValue ? `Default: ${cv.defaultValue}` : `Enter ${cv.label}...`}
+                          className="w-full px-2.5 py-1.5 bg-white border border-indigo-200 focus:border-indigo-500 rounded-lg text-slate-900"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Compiled Subject Line */}
@@ -773,7 +960,7 @@ export const EmailTemplatesView: React.FC = () => {
                 </button>
               </div>
               <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900">
-                {compiledSubject}
+                {previewSubject}
               </div>
             </div>
 
@@ -781,7 +968,7 @@ export const EmailTemplatesView: React.FC = () => {
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Email Body Preview
+                  Email Body Preview <span className="text-[10px] text-indigo-600 font-normal">(Variables shown within [brackets])</span>
                 </span>
                 <button
                   type="button"
@@ -802,7 +989,7 @@ export const EmailTemplatesView: React.FC = () => {
                 </button>
               </div>
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 whitespace-pre-wrap leading-relaxed font-sans min-h-[210px]">
-                {compiledBody}
+                {previewBody}
               </div>
             </div>
 
@@ -876,9 +1063,12 @@ export const EmailTemplatesView: React.FC = () => {
 
       {/* Create / Edit Template Modal */}
       {isEditorOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full overflow-hidden animate-in fade-in zoom-in-95">
-            <div className="px-4 py-3.5 bg-slate-900 text-white flex items-center justify-between">
+        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-hidden">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden animate-in fade-in zoom-in-95 max-h-[94dvh] sm:max-h-[90vh] flex flex-col">
+            {/* Mobile Grab Handle */}
+            <div className="sm:hidden w-10 h-1 bg-slate-300 rounded-full mx-auto mt-2 shrink-0" />
+
+            <div className="px-4 py-3 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-indigo-400" />
                 <h3 className="font-bold text-sm">
@@ -894,7 +1084,7 @@ export const EmailTemplatesView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveTemplateForm} className="p-4 sm:p-5 space-y-3.5 text-xs">
+            <form onSubmit={handleSaveTemplateForm} className="p-4 sm:p-5 space-y-3.5 text-xs flex-1 min-h-0 overflow-y-auto">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Template Title *</label>
@@ -936,7 +1126,7 @@ export const EmailTemplatesView: React.FC = () => {
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-bold text-slate-700">Email Subject *</label>
                   <span className="text-[10px] font-mono text-slate-400">
-                    Placeholders: {'{{Supplier_Name}}'} {'{{Product_Name}}'} {'{{Quantity}}'}
+                    Use {'{{Variable_Name}}'} anywhere in subject
                   </span>
                 </div>
                 <input
@@ -952,16 +1142,133 @@ export const EmailTemplatesView: React.FC = () => {
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-bold text-slate-700">Email Body *</label>
                   <span className="text-[10px] font-mono text-slate-400">
-                    Supports {'{{Contact_Name}}'}, {'{{Sender_Name}}'}, {'{{Position}}'}
+                    Click any tag below to insert into body
                   </span>
                 </div>
+
+                {/* Quick Insert Badges for System & Custom Variables */}
+                <div className="flex flex-wrap items-center gap-1.5 mb-2 p-2 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1">
+                    Insert:
+                  </span>
+                  {STANDARD_SYSTEM_VARIABLES.slice(0, 6).map(sv => (
+                    <button
+                      key={sv.key}
+                      type="button"
+                      onClick={() => handleInsertPlaceholderIntoBody(sv.key)}
+                      className="px-2 py-0.5 rounded-md bg-white border border-slate-200 hover:border-indigo-400 text-[10px] font-mono text-slate-700 hover:text-indigo-600 transition-colors cursor-pointer"
+                      title={`Insert {{${sv.key}}}`}
+                    >
+                      +{sv.key}
+                    </button>
+                  ))}
+                  {formCustomVariables.map(cv => (
+                    <button
+                      key={cv.key}
+                      type="button"
+                      onClick={() => handleInsertPlaceholderIntoBody(cv.key)}
+                      className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 hover:border-indigo-400 text-[10px] font-mono text-indigo-700 transition-colors cursor-pointer"
+                      title={`Insert {{${cv.key}}}`}
+                    >
+                      +{cv.key}
+                    </button>
+                  ))}
+                </div>
+
                 <textarea
-                  rows={9}
+                  rows={8}
                   required
                   value={formBody}
                   onChange={e => setFormBody(e.target.value)}
-                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 leading-relaxed"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 leading-relaxed font-sans"
                 />
+              </div>
+
+              {/* Custom Variables Builder for this Template */}
+              <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
+                    <span className="font-bold text-indigo-950 text-xs">
+                      Custom Variables & Details for this Template
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-indigo-700">
+                    Add custom fields like Target Price, Lead Time, Gerber Link
+                  </span>
+                </div>
+
+                {/* Form to define a new custom variable */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
+                  <div className="sm:col-span-4">
+                    <input
+                      type="text"
+                      value={newVarKey}
+                      onChange={e => setNewVarKey(e.target.value)}
+                      placeholder="Variable Key (e.g. Lead_Time)"
+                      className="w-full px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg text-slate-900"
+                    />
+                  </div>
+                  <div className="sm:col-span-4">
+                    <input
+                      type="text"
+                      value={newVarLabel}
+                      onChange={e => setNewVarLabel(e.target.value)}
+                      placeholder="Display Label (e.g. Target Lead Time)"
+                      className="w-full px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg text-slate-900"
+                    />
+                  </div>
+                  <div className="sm:col-span-3">
+                    <input
+                      type="text"
+                      value={newVarDefault}
+                      onChange={e => setNewVarDefault(e.target.value)}
+                      placeholder="Default Value"
+                      className="w-full px-2.5 py-1.5 bg-white border border-indigo-200 rounded-lg text-slate-900"
+                    />
+                  </div>
+                  <div className="sm:col-span-1">
+                    <button
+                      type="button"
+                      onClick={handleAddCustomVariableToForm}
+                      disabled={!newVarKey.trim()}
+                      className="w-full h-full py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-lg font-bold flex items-center justify-center cursor-pointer"
+                      title="Add Variable"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* List of currently defined custom variables */}
+                {formCustomVariables.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {formCustomVariables.map(cv => (
+                      <span
+                        key={cv.key}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-indigo-200 rounded-lg text-[11px] text-slate-800 font-medium"
+                      >
+                        <span className="font-mono text-indigo-700 font-bold">
+                          {'{{' + cv.key + '}}'}
+                        </span>
+                        <span className="text-slate-500">({cv.label})</span>
+                        {cv.defaultValue && (
+                          <span className="text-slate-400 font-mono text-[10px]">
+                            = {cv.defaultValue}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCustomVariableFromForm(cv.key)}
+                          className="text-slate-400 hover:text-rose-600 cursor-pointer ml-0.5"
+                          title="Remove variable"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-2">
