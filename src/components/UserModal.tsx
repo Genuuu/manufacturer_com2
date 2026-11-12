@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp, normalizeUserRole } from '../context/AppContext';
 import { AppUser, UserRoleType } from '../types';
-import { X, UserPlus, Shield, User, Mail, Building2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, UserPlus, Shield, User, Mail, Briefcase, AlertCircle } from 'lucide-react';
 
 interface UserModalProps {
   isOpen: boolean;
@@ -20,8 +20,8 @@ export const UserModal: React.FC<UserModalProps> = ({
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<UserRoleType>('manager');
-  const [department, setDepartment] = useState('Procurement & Sourcing');
+  const [role, setRole] = useState<UserRoleType>('moderator');
+  const [position, setPosition] = useState('Procurement Specialist');
   const [isActive, setIsActive] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -29,14 +29,14 @@ export const UserModal: React.FC<UserModalProps> = ({
     if (editingUser) {
       setName(editingUser.name);
       setEmail(editingUser.email);
-      setRole(editingUser.role);
-      setDepartment(editingUser.department || 'Procurement & Sourcing');
+      setRole(normalizeUserRole(editingUser.role));
+      setPosition(editingUser.department || 'Procurement Specialist');
       setIsActive(editingUser.isActive !== false);
     } else {
       setName('');
       setEmail('');
-      setRole('manager');
-      setDepartment('Procurement & Sourcing');
+      setRole('moderator');
+      setPosition('Procurement Specialist');
       setIsActive(true);
     }
     setErrorMsg('');
@@ -60,7 +60,7 @@ export const UserModal: React.FC<UserModalProps> = ({
         name: name.trim(),
         email: email.trim(),
         role,
-        department: department.trim(),
+        department: position.trim() || 'Team Member',
         isActive,
       });
 
@@ -73,7 +73,7 @@ export const UserModal: React.FC<UserModalProps> = ({
         name: name.trim(),
         email: email.trim(),
         role,
-        department: department.trim(),
+        department: position.trim() || 'Team Member',
         isActive,
         avatar: name
           .split(' ')
@@ -108,10 +108,10 @@ export const UserModal: React.FC<UserModalProps> = ({
             </div>
             <div>
               <h2 className="font-bold text-sm text-slate-900">
-                {isEditing ? 'Edit Team Member' : 'Add New User / Team Member'}
+                {isEditing ? 'Edit Team Member' : 'Add New Team Member'}
               </h2>
               <p className="text-[11px] text-slate-500">
-                Assign account role, department, and security permissions
+                Assign member position, security role, and account permissions
               </p>
             </div>
           </div>
@@ -166,17 +166,17 @@ export const UserModal: React.FC<UserModalProps> = ({
             />
           </div>
 
-          {/* Department */}
+          {/* Position */}
           <div>
             <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
-              <Building2 className="h-3.5 w-3.5 text-slate-400" />
-              <span>Department / Team</span>
+              <Briefcase className="h-3.5 w-3.5 text-slate-400" />
+              <span>Position</span>
             </label>
             <input
               type="text"
-              value={department}
-              onChange={e => setDepartment(e.target.value)}
-              placeholder="e.g. Procurement & Sourcing"
+              value={position}
+              onChange={e => setPosition(e.target.value)}
+              placeholder="e.g. Procurement Lead, Hardware Engineer"
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
             />
           </div>
@@ -192,10 +192,9 @@ export const UserModal: React.FC<UserModalProps> = ({
               onChange={e => setRole(e.target.value as UserRoleType)}
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="admin">Lead Administrator (Full System Control)</option>
-              <option value="manager">Sourcing Manager (Supplier & Comms CRUD)</option>
-              <option value="engineer">Hardware Engineer (Log Technical Comms)</option>
-              <option value="auditor">Viewer / Auditor (Read-Only Access)</option>
+              <option value="admin">Admin (Full System Control & Template Editor)</option>
+              <option value="moderator">Moderator (Manage Suppliers, Comms & View Templates)</option>
+              <option value="viewer">Viewer (Read-Only Database Access)</option>
             </select>
           </div>
 

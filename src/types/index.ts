@@ -71,7 +71,7 @@ export interface CommunicationEntry {
   createdAt?: string;
 }
 
-export type UserRoleType = 'admin' | 'manager' | 'engineer' | 'auditor';
+export type UserRoleType = 'admin' | 'moderator' | 'viewer';
 
 export interface RolePermissions {
   canCreateManufacturer: boolean;
@@ -92,7 +92,7 @@ export interface AppUser {
   name: string;
   email: string;
   role: UserRoleType;
-  department: string;
+  department: string; // Member Position
   avatar: string;
   isActive: boolean;
   lastLogin: string;

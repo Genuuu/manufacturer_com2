@@ -61,7 +61,7 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
 
   const handleDelete = (c: CommunicationEntry) => {
     if (!hasPermission('canDeleteCommunication')) {
-      alert('Permission Denied: Only Manager or Admin can delete communication records.');
+      alert('Permission Denied: Only Moderator or Admin can delete communication records.');
       return;
     }
     if (confirm(`Delete message for ${c.manufacturerName} - "${c.subject}"?`)) {

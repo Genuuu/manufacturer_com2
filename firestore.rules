@@ -146,7 +146,7 @@ service cloud.firestore {
         && isValidId(data.id)
         && isValidString(data.name, 300)
         && isValidString(data.email, 320)
-        && data.role in ['admin', 'manager', 'engineer', 'auditor']
+        && data.role in ['admin', 'moderator', 'viewer', 'manager', 'engineer', 'auditor']
         && isOptionalString(data, 'department', 300)
         && isOptionalString(data, 'avatar', 500)
         && (!('isActive' in data) || data.isActive is bool)
@@ -158,7 +158,7 @@ service cloud.firestore {
         && data.keys().hasOnly(['email', 'userId', 'role', 'isActive'])
         && isValidString(data.email, 320)
         && isValidId(data.userId)
-        && data.role in ['admin', 'manager', 'engineer', 'auditor']
+        && data.role in ['admin', 'moderator', 'viewer', 'manager', 'engineer', 'auditor']
         && data.isActive is bool;
     }
 
@@ -207,9 +207,29 @@ service cloud.firestore {
           )
           ||
           (settingId == 'permissions'
-            && data.keys().hasOnly(['admin', 'manager', 'engineer', 'auditor'])
+            && data.keys().hasOnly(['admin', 'moderator', 'viewer', 'manager', 'engineer', 'auditor'])
           )
         );
+    }
+
+    function isValidEmailTemplate(data) {
+      return data.keys().hasAll(['id', 'title', 'category', 'subject', 'body'])
+        && data.keys().hasOnly([
+          'id',
+          'title',
+          'category',
+          'subject',
+          'body',
+          'description',
+          'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.title, 300)
+        && isValidString(data.category, 100)
+        && isValidString(data.subject, 1000)
+        && isValidString(data.body, 50000)
+        && isOptionalString(data, 'description', 1000)
+        && isOptionalString(data, 'updatedAt', 64);
     }
 
     // =========================================================================
@@ -256,6 +276,31 @@ service cloud.firestore {
       allow list: if isSignedIn();
       allow create, update: if isAuthorizedUser() && isValidSetting(settingId, incoming());
       allow delete: if isAuthorizedUser() && isValidId(settingId);
+    }
+
+    match /emailTemplates/{templateId} {
+      allow get: if (
+        isBootstrappedAdmin() || (
+          isAuthorizedUser()
+          && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.role in ['admin', 'moderator', 'manager', 'engineer']
+        )
+      ) && isValidId(templateId);
+      allow list: if isBootstrappedAdmin() || (
+        isAuthorizedUser()
+        && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.role in ['admin', 'moderator', 'manager', 'engineer']
+      );
+      allow create, update: if (
+        isBootstrappedAdmin() || (
+          isAuthorizedUser()
+          && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.role == 'admin'
+        )
+      ) && isValidId(templateId) && isValidEmailTemplate(incoming());
+      allow delete: if (
+        isBootstrappedAdmin() || (
+          isAuthorizedUser()
+          && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.role == 'admin'
+        )
+      ) && isValidId(templateId);
     }
 
     // Default-deny catch-all

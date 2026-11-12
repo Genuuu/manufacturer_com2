@@ -51,6 +51,7 @@ export type NavTab =
   | 'overview'
   | 'communications'
   | 'manufacturers'
+  | 'templates'
   | 'spreadsheet'
   | 'permissions';
 
@@ -154,13 +155,49 @@ function isHardcodedUser(u: Partial<AppUser> | null | undefined): boolean {
   return false;
 }
 
+export function normalizeUserRole(role?: string): UserRoleType {
+  if (role === 'admin') return 'admin';
+  if (role === 'moderator' || role === 'manager' || role === 'engineer') return 'moderator';
+  if (role === 'viewer' || role === 'auditor') return 'viewer';
+  return 'moderator';
+}
+
+function normalizeUserRecord(u: AppUser): AppUser {
+  return {
+    ...u,
+    role: normalizeUserRole(u.role),
+    department: u.department || 'Procurement Specialist',
+  };
+}
+
+function normalizeRolePermissionsMap(raw: any): Record<UserRoleType, RolePermissions> {
+  if (!raw || typeof raw !== 'object') {
+    return DEFAULT_ROLE_PERMISSIONS;
+  }
+  return {
+    admin: {
+      ...DEFAULT_ROLE_PERMISSIONS.admin,
+      ...(raw.admin || {}),
+    },
+    moderator: {
+      ...DEFAULT_ROLE_PERMISSIONS.moderator,
+      ...(raw.moderator || raw.manager || {}),
+    },
+    viewer: {
+      ...DEFAULT_ROLE_PERMISSIONS.viewer,
+      ...(raw.viewer || raw.auditor || {}),
+    },
+  };
+}
+
 function syncAuthorizedEmailDoc(user: AppUser) {
   const emailKey = (user.email || '').trim().toLowerCase();
   if (!emailKey || isHardcodedUser(user)) return;
+  const normalizedRole = normalizeUserRole(user.role);
   setDoc(doc(db, 'authorizedEmails', emailKey), {
     email: emailKey,
     userId: user.id,
-    role: user.role,
+    role: normalizedRole,
     isActive: Boolean(user.isActive),
   }).catch(() => {});
 }
@@ -189,8 +226,9 @@ function deduplicateUsersList(
 ): AppUser[] {
   const byKey = new Map<string, AppUser>();
 
-  for (const rawUser of list) {
-    if (!rawUser || isHardcodedUser(rawUser)) continue;
+  for (const rawItem of list) {
+    if (!rawItem || isHardcodedUser(rawItem)) continue;
+    const rawUser = normalizeUserRecord(rawItem);
     const emailKey = (rawUser.email || '').trim().toLowerCase();
     const nameKey = (rawUser.name || '').trim().toLowerCase();
     const key = emailKey || `name:${nameKey}` || rawUser.id;
@@ -215,7 +253,7 @@ function deduplicateUsersList(
         name: primary.name || secondary.name,
         email: primary.email || secondary.email,
         department: primary.department || secondary.department,
-        role: primary.role || secondary.role,
+        role: normalizeUserRole(primary.role || secondary.role),
         avatar: primary.avatar || secondary.avatar,
         lastLogin:
           primary.lastLogin && primary.lastLogin !== 'Never'
@@ -238,7 +276,7 @@ const FALLBACK_SESSION_USER: AppUser = {
   name: 'Workspace Admin',
   email: '',
   role: 'admin',
-  department: 'Procurement',
+  department: 'System Administrator',
   avatar: 'WA',
   isActive: true,
   lastLogin: '',
@@ -289,7 +327,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (saved) {
         const parsed = JSON.parse(saved);
         if (!isHardcodedUser(parsed)) {
-          return parsed;
+          return normalizeUserRecord(parsed);
         }
       }
       return FALLBACK_SESSION_USER;
@@ -301,7 +339,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [rolePermissions, setRolePermissions] = useState<Record<UserRoleType, RolePermissions>>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.PERMISSIONS);
-      return saved ? JSON.parse(saved) : DEFAULT_ROLE_PERMISSIONS;
+      return saved ? normalizeRolePermissionsMap(JSON.parse(saved)) : DEFAULT_ROLE_PERMISSIONS;
     } catch {
       return DEFAULT_ROLE_PERMISSIONS;
     }
@@ -506,7 +544,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           name: firebaseUser.displayName || normalizedEmail.split('@')[0],
           email: normalizedEmail,
           role: 'admin',
-          department: 'Procurement Management',
+          department: 'System Administrator',
           isActive: true,
           avatar: (firebaseUser.displayName || normalizedEmail)
             .split(' ')
@@ -675,7 +713,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const unsubPermissions = onSnapshot(doc(db, 'settings', 'permissions'), docSnap => {
       if (docSnap.exists()) {
-        setRolePermissions(docSnap.data() as Record<UserRoleType, RolePermissions>);
+        setRolePermissions(normalizeRolePermissionsMap(docSnap.data()));
       }
     }, err => console.warn('Firestore permissions sync notice:', err.message));
 
@@ -766,7 +804,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               });
             }
           }
-          if (pData) setRolePermissions(pData);
+          if (pData) setRolePermissions(normalizeRolePermissionsMap(pData));
           if (aData && Array.isArray(aData)) {
             const validLogs = aData.filter(
               (l: AuditLogItem) => !HARDCODED_USER_IDS.has(l.userId) && !HARDCODED_USER_IDS.has(l.targetId || '')
@@ -845,8 +883,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Permission Check
   const hasPermission = (permission: keyof RolePermissions): boolean => {
-    const role = currentUser.role;
-    const permissions = rolePermissions[role];
+    const role = normalizeUserRole(currentUser.role);
+    const permissions = rolePermissions[role] || DEFAULT_ROLE_PERMISSIONS[role];
     if (!permissions) return false;
     return Boolean(permissions[permission]);
   };
@@ -932,7 +970,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           name: googleUser.displayName || normalizedEmail.split('@')[0],
           email: normalizedEmail,
           role: 'admin',
-          department: 'Procurement Management',
+          department: 'System Administrator',
           isActive: true,
           avatar: initials || 'GU',
           lastLogin: new Date().toISOString().replace('T', ' ').substring(0, 16),
@@ -1219,7 +1257,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const deleteCommunication = (id: string) => {
     if (!hasPermission('canDeleteCommunication')) {
-      return { success: false, message: 'Permission Denied: Only Manager or Admin can delete communication records.' };
+      return { success: false, message: 'Permission Denied: Only Moderator or Admin can delete communication records.' };
     }
 
     deletedCommIdsRef.current.add(id);

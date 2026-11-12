@@ -60,13 +60,13 @@
     },
     "AppUser": {
       "title": "AppUser",
-      "description": "User account profile and role",
+      "description": "User account profile, position, and security role",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
         "name": { "type": "string", "maxLength": 300 },
         "email": { "type": "string", "maxLength": 320 },
-        "role": { "type": "string", "enum": ["admin", "manager", "engineer", "auditor"] },
+        "role": { "type": "string", "enum": ["admin", "moderator", "viewer"] },
         "department": { "type": "string", "maxLength": 300 },
         "avatar": { "type": "string", "maxLength": 500 },
         "isActive": { "type": "boolean" },
@@ -81,7 +81,7 @@
       "properties": {
         "email": { "type": "string", "maxLength": 320 },
         "userId": { "type": "string", "maxLength": 128 },
-        "role": { "type": "string", "enum": ["admin", "manager", "engineer", "auditor"] },
+        "role": { "type": "string", "enum": ["admin", "moderator", "viewer"] },
         "isActive": { "type": "boolean" }
       },
       "required": ["email", "userId", "role", "isActive"]
@@ -115,6 +115,21 @@
         "lastSyncedCommCount": { "type": "number" },
         "lastSyncedHash": { "type": "string", "maxLength": 128 }
       }
+    },
+    "EmailTemplate": {
+      "title": "EmailTemplate",
+      "description": "Reusable procurement and supplier communication email template",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 300 },
+        "category": { "type": "string", "maxLength": 100 },
+        "subject": { "type": "string", "maxLength": 1000 },
+        "body": { "type": "string", "maxLength": 50000 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "title", "category", "subject", "body"]
     }
   },
   "firestore": {
@@ -141,6 +156,10 @@
     "/settings/{settingId}": {
       "schema": { "$ref": "#/entities/AppSetting" },
       "description": "Collection of application settings (permissions and googleSheetBackup)"
+    },
+    "/emailTemplates/{templateId}": {
+      "schema": { "$ref": "#/entities/EmailTemplate" },
+      "description": "Collection of reusable procurement email templates"
     }
   }
 }

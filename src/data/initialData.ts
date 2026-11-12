@@ -20,10 +20,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRoleType, RolePermissions> = {
     canImportData: true,
     canViewAuditLog: true,
   },
-  manager: {
+  moderator: {
     canCreateManufacturer: true,
     canEditManufacturer: true,
-    canDeleteManufacturer: false, // Managers cannot delete records
+    canDeleteManufacturer: false, // Moderators cannot delete supplier records by default
     canLogCommunication: true,
     canEditCommunication: true,
     canDeleteCommunication: true,
@@ -33,20 +33,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRoleType, RolePermissions> = {
     canImportData: true,
     canViewAuditLog: true,
   },
-  engineer: {
-    canCreateManufacturer: false,
-    canEditManufacturer: false,
-    canDeleteManufacturer: false,
-    canLogCommunication: true,
-    canEditCommunication: true, // can update own logs
-    canDeleteCommunication: false,
-    canManageUsers: false,
-    canModifyPermissions: false,
-    canExportData: true,
-    canImportData: false,
-    canViewAuditLog: false,
-  },
-  auditor: {
+  viewer: {
     canCreateManufacturer: false,
     canEditManufacturer: false,
     canDeleteManufacturer: false,

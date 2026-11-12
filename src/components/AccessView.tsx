@@ -1,28 +1,20 @@
 import React, { useState, useRef } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp, normalizeUserRole } from '../context/AppContext';
 import { UserRoleType, RolePermissions, AppUser } from '../types';
 import {
   ShieldCheck,
-  UserCheck,
   Check,
   X,
   Download,
   Upload,
-  RotateCcw,
   AlertCircle,
   CheckCircle2,
-  Lock,
   UserPlus,
-  KeyRound,
-  ShieldAlert,
   Edit2,
   Trash2,
   Users,
-  Building2,
-  Mail,
-  User,
-  Power,
-  Sparkles,
+  Briefcase,
+  Lock,
 } from 'lucide-react';
 import { UserModal } from './UserModal';
 
@@ -30,18 +22,12 @@ export const AccessView: React.FC = () => {
   const {
     currentUser,
     users,
-    switchUser,
     rolePermissions,
     updateRolePermissions,
-    toggleUserStatus,
     deleteUser,
     exportCsvData,
     importCsvData,
-    resetDatabase,
     clearAllData,
-    manufacturers,
-    communications,
-    hasPermission,
     firebaseProjectId,
   } = useApp();
 
@@ -61,7 +47,7 @@ export const AccessView: React.FC = () => {
         </div>
         <h2 className="text-base font-bold text-slate-900">Admin Access Required</h2>
         <p className="text-xs text-slate-600 leading-relaxed">
-          The Permissions & Access Control panel can only be viewed and edited by Lead Administrators.
+          The Permissions & Access Control panel can only be viewed and edited by Administrators.
           Your active account is logged in as <strong className="text-slate-800">{currentUser.name}</strong> ({currentUser.role}).
         </p>
       </div>
@@ -71,25 +57,19 @@ export const AccessView: React.FC = () => {
   const rolesList: { id: UserRoleType; name: string; desc: string; badge: string }[] = [
     {
       id: 'admin',
-      name: 'Lead Administrator',
-      desc: 'Full system control',
+      name: 'Admin',
+      desc: 'Full system control & template editor',
       badge: 'bg-purple-50 text-purple-700 border-purple-200',
     },
     {
-      id: 'manager',
-      name: 'Sourcing Manager',
-      desc: 'Supplier & comms management',
+      id: 'moderator',
+      name: 'Moderator',
+      desc: 'Supplier & comms management, view templates',
       badge: 'bg-blue-50 text-blue-700 border-blue-200',
     },
     {
-      id: 'engineer',
-      name: 'Hardware Engineer',
-      desc: 'Log notes & technical files',
-      badge: 'bg-amber-50 text-amber-700 border-amber-200',
-    },
-    {
-      id: 'auditor',
-      name: 'Viewer / Auditor',
+      id: 'viewer',
+      name: 'Viewer',
       desc: 'Read-only access across database',
       badge: 'bg-slate-100 text-slate-700 border-slate-300',
     },
@@ -115,7 +95,7 @@ export const AccessView: React.FC = () => {
       return;
     }
 
-    const currentPerms = { ...rolePermissions[role] };
+    const currentPerms = { ...(rolePermissions[role] || rolePermissions.moderator) };
     currentPerms[permKey] = !currentPerms[permKey];
 
     const res = updateRolePermissions(role, currentPerms);
@@ -200,17 +180,8 @@ export const AccessView: React.FC = () => {
             <h2 className="text-base font-bold text-slate-900">Team Management & Access Control</h2>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Admin Console: Manage team member accounts, assign security roles, and customize permissions
+            Manage member positions, assign security roles (Admin, Moderator, Viewer), and configure permissions
           </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start sm:self-auto">
-          <span className="text-xs font-mono font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
-            ✓ Firebase Connected: {firebaseProjectId || 'manufacturer-11fe2'}
-          </span>
-          <span className="text-xs font-mono font-semibold text-purple-800 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-lg">
-            ✓ Admin Console Active
-          </span>
         </div>
       </div>
 
@@ -252,7 +223,7 @@ export const AccessView: React.FC = () => {
                 Team Members ({users.length})
               </h3>
               <p className="text-[11px] text-slate-500">
-                Add users, assign security roles, and manage account access
+                Add members, set their position, and assign Admin, Moderator, or Viewer access
               </p>
             </div>
           </div>
@@ -262,7 +233,7 @@ export const AccessView: React.FC = () => {
             className="w-full sm:w-auto justify-center px-3.5 py-2 sm:py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
           >
             <UserPlus className="h-4 w-4" />
-            <span>+ Add New User</span>
+            <span>+ Add Team Member</span>
           </button>
         </div>
 
@@ -270,7 +241,8 @@ export const AccessView: React.FC = () => {
         <div className="divide-y divide-slate-100">
           {users.map(u => {
             const isCurrent = u.id === currentUser.id;
-            const rInfo = rolesList.find(r => r.id === u.role);
+            const normalizedRole = normalizeUserRole(u.role);
+            const rInfo = rolesList.find(r => r.id === normalizedRole) || rolesList[1];
 
             return (
               <div
@@ -286,7 +258,7 @@ export const AccessView: React.FC = () => {
                   </div>
 
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h4 className="font-bold text-sm text-slate-900">{u.name}</h4>
                       {isCurrent && (
                         <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.2 rounded-full border border-indigo-200">
@@ -302,20 +274,25 @@ export const AccessView: React.FC = () => {
 
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5 text-xs text-slate-500">
                       <span className="font-mono text-slate-600">{u.email}</span>
-                      {u.department && <span>· {u.department}</span>}
+                      {u.department && (
+                        <span className="inline-flex items-center gap-1 text-slate-600">
+                          <Briefcase className="h-3 w-3 text-slate-400" />
+                          <span>Position: <strong className="font-semibold text-slate-700">{u.department}</strong></span>
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 {/* Right Actions & Role Badge */}
                 <div className="flex items-center gap-2 self-end sm:self-auto">
-                  <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${rInfo?.badge}`}>
-                    {rInfo?.name}
+                  <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${rInfo.badge}`}>
+                    {rInfo.name}
                   </span>
 
                   <button
                     onClick={() => handleOpenEditUser(u)}
-                    title="Edit user profile"
+                    title="Edit member details"
                     className="p-1.5 text-slate-500 hover:text-indigo-600 rounded-lg hover:bg-slate-100"
                   >
                     <Edit2 className="h-4 w-4" />
@@ -324,7 +301,7 @@ export const AccessView: React.FC = () => {
                   {!isCurrent && (
                     <button
                       onClick={() => handleDeleteUser(u)}
-                      title="Delete user"
+                      title="Delete member"
                       className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -342,10 +319,10 @@ export const AccessView: React.FC = () => {
         <div className="p-3.5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-              Interactive Role Permissions Matrix
+              Interactive Role Permissions Matrix (3 Roles)
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              Admin: Click any checkmark/cross to grant or revoke specific capabilities live.
+              Admin: Click any checkmark/cross to grant or revoke capabilities for Admin, Moderator, and Viewer roles.
             </p>
           </div>
         </div>
@@ -354,19 +331,16 @@ export const AccessView: React.FC = () => {
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-slate-200 text-slate-600 text-[11px] bg-slate-50">
-                <th className="py-3 px-3 sm:px-4 font-semibold min-w-[180px] sm:w-72 sticky left-0 bg-slate-50 z-10 border-r border-slate-200/60">
+                <th className="py-3 px-3 sm:px-4 font-semibold min-w-[200px] sm:w-80 sticky left-0 bg-slate-50 z-10 border-r border-slate-200/60">
                   Capability / Action
                 </th>
-                <th className="py-3 px-3 text-center font-semibold w-24">
+                <th className="py-3 px-3 text-center font-semibold w-28">
                   <span className="text-purple-700 font-bold">Admin</span>
                 </th>
-                <th className="py-3 px-3 text-center font-semibold w-24">
-                  <span className="text-blue-700 font-bold">Manager</span>
+                <th className="py-3 px-3 text-center font-semibold w-28">
+                  <span className="text-blue-700 font-bold">Moderator</span>
                 </th>
-                <th className="py-3 px-3 text-center font-semibold w-24">
-                  <span className="text-amber-700 font-bold">Engineer</span>
-                </th>
-                <th className="py-3 px-3 text-center font-semibold w-24">
+                <th className="py-3 px-3 text-center font-semibold w-28">
                   <span className="text-slate-700 font-bold">Viewer</span>
                 </th>
               </tr>
@@ -384,62 +358,98 @@ export const AccessView: React.FC = () => {
                     <button
                       onClick={() => handleTogglePermission('admin', item.key)}
                       className={`p-1.5 rounded-lg transition-all ${
-                        rolePermissions.admin[item.key]
+                        rolePermissions.admin?.[item.key]
                           ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
                           : 'bg-slate-100 text-slate-300 hover:bg-slate-200'
                       }`}
                       title="Click to toggle permission for Admin"
                     >
-                      {rolePermissions.admin[item.key] ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                      {rolePermissions.admin?.[item.key] ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
                     </button>
                   </td>
 
-                  {/* Manager Column */}
+                  {/* Moderator Column */}
                   <td className="py-3 px-3 text-center">
                     <button
-                      onClick={() => handleTogglePermission('manager', item.key)}
+                      onClick={() => handleTogglePermission('moderator', item.key)}
                       className={`p-1.5 rounded-lg transition-all ${
-                        rolePermissions.manager[item.key]
+                        rolePermissions.moderator?.[item.key]
                           ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
                           : 'bg-slate-100 text-slate-300 hover:bg-slate-200'
                       }`}
-                      title="Click to toggle permission for Manager"
+                      title="Click to toggle permission for Moderator"
                     >
-                      {rolePermissions.manager[item.key] ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                      {rolePermissions.moderator?.[item.key] ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
                     </button>
                   </td>
 
-                  {/* Engineer Column */}
+                  {/* Viewer Column */}
                   <td className="py-3 px-3 text-center">
                     <button
-                      onClick={() => handleTogglePermission('engineer', item.key)}
+                      onClick={() => handleTogglePermission('viewer', item.key)}
                       className={`p-1.5 rounded-lg transition-all ${
-                        rolePermissions.engineer[item.key]
-                          ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                          : 'bg-slate-100 text-slate-300 hover:bg-slate-200'
-                      }`}
-                      title="Click to toggle permission for Engineer"
-                    >
-                      {rolePermissions.engineer[item.key] ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
-                    </button>
-                  </td>
-
-                  {/* Viewer / Auditor Column */}
-                  <td className="py-3 px-3 text-center">
-                    <button
-                      onClick={() => handleTogglePermission('auditor', item.key)}
-                      className={`p-1.5 rounded-lg transition-all ${
-                        rolePermissions.auditor[item.key]
+                        rolePermissions.viewer?.[item.key]
                           ? 'bg-slate-200 text-slate-800 hover:bg-slate-300'
                           : 'bg-slate-100 text-slate-300 hover:bg-slate-200'
                       }`}
                       title="Click to toggle permission for Viewer"
                     >
-                      {rolePermissions.auditor[item.key] ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                      {rolePermissions.viewer?.[item.key] ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
                     </button>
                   </td>
                 </tr>
               ))}
+
+              {/* Built-in Role Policies for Email Templates */}
+              <tr className="bg-slate-50/40">
+                <td className="py-3 px-3 sm:px-4 sticky left-0 bg-slate-50/40 z-10 border-r border-slate-100">
+                  <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                    <span>View & Use Email Templates</span>
+                    <Lock className="h-3 w-3 text-slate-400" />
+                  </div>
+                  <div className="text-[10px] text-slate-400">Access Templates tab to fill & copy outreach emails</div>
+                </td>
+                <td className="py-3 px-3 text-center">
+                  <span className="inline-flex p-1.5 rounded-lg bg-purple-100 text-purple-800">
+                    <Check className="h-4 w-4" />
+                  </span>
+                </td>
+                <td className="py-3 px-3 text-center">
+                  <span className="inline-flex p-1.5 rounded-lg bg-blue-100 text-blue-800">
+                    <Check className="h-4 w-4" />
+                  </span>
+                </td>
+                <td className="py-3 px-3 text-center">
+                  <span className="inline-flex p-1.5 rounded-lg bg-slate-100 text-slate-300">
+                    <X className="h-4 w-4" />
+                  </span>
+                </td>
+              </tr>
+
+              <tr className="bg-slate-50/40">
+                <td className="py-3 px-3 sm:px-4 sticky left-0 bg-slate-50/40 z-10 border-r border-slate-100">
+                  <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                    <span>Create & Edit Email Templates</span>
+                    <Lock className="h-3 w-3 text-slate-400" />
+                  </div>
+                  <div className="text-[10px] text-slate-400">Modify shared email templates for the workspace</div>
+                </td>
+                <td className="py-3 px-3 text-center">
+                  <span className="inline-flex p-1.5 rounded-lg bg-purple-100 text-purple-800">
+                    <Check className="h-4 w-4" />
+                  </span>
+                </td>
+                <td className="py-3 px-3 text-center">
+                  <span className="inline-flex p-1.5 rounded-lg bg-slate-100 text-slate-300">
+                    <X className="h-4 w-4" />
+                  </span>
+                </td>
+                <td className="py-3 px-3 text-center">
+                  <span className="inline-flex p-1.5 rounded-lg bg-slate-100 text-slate-300">
+                    <X className="h-4 w-4" />
+                  </span>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>

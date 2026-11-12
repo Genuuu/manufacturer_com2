@@ -4,17 +4,18 @@ import { Navbar } from './components/Navbar';
 import { OverviewView } from './components/OverviewView';
 import { CommunicationView } from './components/CommunicationView';
 import { ManufacturerView } from './components/ManufacturerView';
+import { EmailTemplatesView } from './components/EmailTemplatesView';
 import { SpreadsheetView } from './components/SpreadsheetView';
 import { AccessView } from './components/AccessView';
 import { LoginView } from './components/LoginView';
 import { CommunicationModal } from './components/CommunicationModal';
 import { ManufacturerModal } from './components/ManufacturerModal';
 import { DocumentPreviewModal } from './components/DocumentPreviewModal';
-import { CloudSyncIndicator } from './components/CloudSyncIndicator';
 import { CommunicationEntry, Manufacturer } from './types';
 
 const MainLayout: React.FC = () => {
-  const { activeTab, isAuthenticated } = useApp();
+  const { activeTab, isAuthenticated, currentUser } = useApp();
+  const canViewTemplates = currentUser.role === 'admin' || currentUser.role === 'moderator';
 
   if (!isAuthenticated) {
     return <LoginView />;
@@ -80,7 +81,7 @@ const MainLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900 antialiased selection:bg-indigo-500 selection:text-white">
-      {/* Clean Top Navbar */}
+      {/* Top Navbar */}
       <Navbar
         onOpenCommModal={handleOpenNewComm}
         onOpenAiCommModal={handleOpenAiComm}
@@ -88,7 +89,7 @@ const MainLayout: React.FC = () => {
       />
 
       {/* Main Single-Container Workspace */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-5 lg:px-6 py-4 sm:py-6 pb-24 md:pb-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-5 lg:px-6 py-4 sm:py-5 pb-20 md:pb-8">
         {activeTab === 'overview' && (
           <OverviewView
             onOpenCommModalWithManufacturer={handleOpenCommForManufacturer}
@@ -110,6 +111,8 @@ const MainLayout: React.FC = () => {
             onPreviewDoc={handlePreviewDoc}
           />
         )}
+
+        {activeTab === 'templates' && canViewTemplates && <EmailTemplatesView />}
 
         {activeTab === 'spreadsheet' && <SpreadsheetView />}
 
@@ -137,9 +140,6 @@ const MainLayout: React.FC = () => {
         filename={previewDocName}
         title={previewDocTitle}
       />
-
-      {/* Cloud DB Sync Status Indicator in bottom-right corner */}
-      <CloudSyncIndicator />
     </div>
   );
 };
