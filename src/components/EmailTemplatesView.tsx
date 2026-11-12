@@ -191,12 +191,12 @@ export const EmailTemplatesView: React.FC = () => {
 
   // Dynamic Variable Fill State
   const [selectedManufacturerId, setSelectedManufacturerId] = useState<string>('');
-  const [contactName, setContactName] = useState<string>('Sales & Engineering Team');
-  const [productName, setProductName] = useState<string>('5,000 PCBs / Hardware Assemblies');
-  const [quantity, setQuantity] = useState<string>('5,000 pcs');
-  const [senderName, setSenderName] = useState<string>(currentUser?.name || 'Procurement Team');
+  const [contactName, setContactName] = useState<string>('');
+  const [productName, setProductName] = useState<string>('');
+  const [quantity, setQuantity] = useState<string>('');
+  const [senderName, setSenderName] = useState<string>(currentUser?.name || '');
   const [senderPosition, setSenderPosition] = useState<string>(
-    currentUser?.department || 'Procurement & Hardware Engineering'
+    currentUser?.department || ''
   );
   const [companyName, setCompanyName] = useState<string>('FabricateOps');
   const [senderEmail, setSenderEmail] = useState<string>(currentUser?.email || '');
@@ -283,7 +283,9 @@ export const EmailTemplatesView: React.FC = () => {
       }
       setContactName(`${found.name} Team`);
     } else {
-      setContactName('Sales & Engineering Team');
+      setContactName('');
+      setProductName('');
+      setQuantity('');
     }
   };
 
@@ -323,15 +325,15 @@ export const EmailTemplatesView: React.FC = () => {
 
   // Replace {{Placeholders}} with current variable values
   const fillVariables = (text: string): string => {
-    const supplierLabel = selectedManufacturer ? selectedManufacturer.name : 'Supplier';
+    const supplierLabel = selectedManufacturer ? selectedManufacturer.name : '';
     return text
       .replace(/\{\{Supplier_Name\}\}/gi, supplierLabel)
-      .replace(/\{\{Contact_Name\}\}/gi, contactName || 'Team')
-      .replace(/\{\{Product_Name\}\}/gi, productName || 'Requested Components')
-      .replace(/\{\{Quantity\}\}/gi, quantity || 'Target Volume')
-      .replace(/\{\{Sender_Name\}\}/gi, senderName || currentUser?.name || 'Procurement Team')
-      .replace(/\{\{Position\}\}/gi, senderPosition || currentUser?.department || 'Procurement & Hardware Engineering')
-      .replace(/\{\{Department\}\}/gi, senderPosition || currentUser?.department || 'Procurement & Hardware Engineering')
+      .replace(/\{\{Contact_Name\}\}/gi, contactName)
+      .replace(/\{\{Product_Name\}\}/gi, productName)
+      .replace(/\{\{Quantity\}\}/gi, quantity)
+      .replace(/\{\{Sender_Name\}\}/gi, senderName || currentUser?.name || '')
+      .replace(/\{\{Position\}\}/gi, senderPosition || currentUser?.department || '')
+      .replace(/\{\{Department\}\}/gi, senderPosition || currentUser?.department || '')
       .replace(/\{\{Sender_Email\}\}/gi, senderEmail || currentUser?.email || '')
       .replace(/\{\{Company_Name\}\}/gi, companyName || 'FabricateOps');
   };

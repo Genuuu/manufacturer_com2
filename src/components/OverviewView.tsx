@@ -35,7 +35,9 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   } = useApp();
 
   const [selectedMId, setSelectedMId] = useState<string>('ALL');
+  const [showOpenThreadsPanel, setShowOpenThreadsPanel] = useState<boolean>(false);
   const [showActionRequiredPanel, setShowActionRequiredPanel] = useState<boolean>(false);
+  const [showAwaitingReplyPanel, setShowAwaitingReplyPanel] = useState<boolean>(false);
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [editingActionText, setEditingActionText] = useState<string>('');
 
@@ -59,7 +61,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     return Array.from(threadStatusMap.entries()).filter(([_, isOpen]) => isOpen).map(([tid]) => tid);
   }, [communications]);
 
-  const awaitingReply = communications.filter(c => c.status === 'Awaiting Reply');
+  const awaitingReply = communications.filter(c => c.status === 'Awaiting Reply').sort(compareCommByEntryOrder);
   const actionRequired = communications
     .filter(
       c =>
@@ -105,6 +107,37 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
       ? actionRequired
       : actionRequired.filter(c => c.manufacturerId === selectedMId);
 
+  const scopedAwaitingReply =
+    selectedMId === 'ALL'
+      ? awaitingReply
+      : awaitingReply.filter(c => c.manufacturerId === selectedMId);
+
+  // Group into Open Thread objects (threads that have at least one unclosed item)
+  const scopedOpenThreads = useMemo(() => {
+    const threadMap = new Map<string, CommunicationEntry[]>();
+    manufacturerComms.forEach(c => {
+      const tid = c.threadId || 'T001';
+      if (!threadMap.has(tid)) threadMap.set(tid, []);
+      threadMap.get(tid)!.push(c);
+    });
+
+    return Array.from(threadMap.entries())
+      .filter(([_, msgs]) => msgs.some(m => m.status !== 'Completed' && m.status !== 'Reply Received'))
+      .map(([tid, msgs]) => {
+        const sorted = [...msgs].sort(compareCommByEntryOrder);
+        const latest = sorted[sorted.length - 1];
+        return {
+          threadId: tid,
+          messages: sorted,
+          latestMsg: latest,
+          firstMsg: sorted[0],
+          manufacturerId: latest.manufacturerId,
+          manufacturerName: latest.manufacturerName,
+        };
+      })
+      .sort((a, b) => b.latestMsg.date.localeCompare(a.latestMsg.date));
+  }, [manufacturerComms]);
+
   const handleSaveQuickActionText = (commId: string) => {
     if (!hasPermission('canEditCommunication')) return;
     updateCommunication(commId, { nextAction: editingActionText.trim() || undefined });
@@ -115,6 +148,11 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   const handleMarkCompleted = (commId: string) => {
     if (!hasPermission('canEditCommunication')) return;
     updateCommunication(commId, { status: 'Completed' });
+  };
+
+  const handleMarkReplyReceived = (commId: string) => {
+    if (!hasPermission('canEditCommunication')) return;
+    updateCommunication(commId, { status: 'Reply Received' });
   };
 
   // Group Selected Comms into Threads
@@ -186,27 +224,47 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
         {/* Flat 4-Metric Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1 border-t border-slate-100">
-          <div className="px-3 py-2 rounded-lg bg-slate-50 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setActiveTab('manufacturers')}
+            className="px-3 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-between text-left transition-colors cursor-pointer border border-transparent hover:border-emerald-200"
+          >
             <div>
               <span className="text-[11px] font-medium text-slate-500 block">Active Suppliers</span>
-              <div className="text-lg font-bold text-slate-900 tabular-nums">
-                {activeManufacturers.length}
-                <span className="text-xs font-normal text-slate-400 ml-1">/ {manufacturers.length}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-lg font-bold text-slate-900 tabular-nums">
+                  {activeManufacturers.length}
+                </span>
+                <span className="text-xs font-normal text-slate-400">
+                  / {manufacturers.length}
+                </span>
+                <span className="text-[11px] font-semibold text-emerald-600 underline ml-1">
+                  View Vendors
+                </span>
               </div>
             </div>
             <Building2 className="h-4 w-4 text-emerald-600 shrink-0" />
-          </div>
+          </button>
 
           <button
             type="button"
-            onClick={() => setActiveTab('communications')}
-            className="px-3 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-between text-left transition-colors cursor-pointer"
+            onClick={() => setShowOpenThreadsPanel(prev => !prev)}
+            className={`px-3 py-2 rounded-lg flex items-center justify-between text-left transition-colors cursor-pointer border ${
+              showOpenThreadsPanel
+                ? 'bg-indigo-50 border-indigo-300'
+                : 'bg-slate-50 border-transparent hover:border-indigo-200'
+            }`}
           >
             <div>
               <span className="text-[11px] font-medium text-slate-500 block">Open Threads</span>
-              <div className="text-lg font-bold text-slate-900 tabular-nums">
-                {openThreadIds.length}
-                <span className="text-xs font-normal text-slate-400 ml-1">/ {allThreadIds.length}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-slate-900 tabular-nums">
+                  {openThreadIds.length}
+                  <span className="text-xs font-normal text-slate-400 ml-1">/ {allThreadIds.length}</span>
+                </span>
+                <span className="text-[11px] font-semibold text-indigo-600 underline">
+                  {showOpenThreadsPanel ? 'Hide' : 'Show Threads'}
+                </span>
               </div>
             </div>
             <Clock className="h-4 w-4 text-indigo-600 shrink-0" />
@@ -214,13 +272,22 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 
           <button
             type="button"
-            onClick={() => setActiveTab('communications')}
-            className="px-3 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-between text-left transition-colors cursor-pointer"
+            onClick={() => setShowAwaitingReplyPanel(prev => !prev)}
+            className={`px-3 py-2 rounded-lg flex items-center justify-between text-left transition-colors cursor-pointer border ${
+              showAwaitingReplyPanel
+                ? 'bg-amber-50 border-amber-300'
+                : 'bg-slate-50 border-transparent hover:border-amber-200'
+            }`}
           >
             <div>
               <span className="text-[11px] font-medium text-slate-500 block">Awaiting Reply</span>
-              <div className="text-lg font-bold text-amber-600 tabular-nums">
-                {awaitingReply.length}
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-bold text-amber-600 tabular-nums">
+                  {awaitingReply.length}
+                </span>
+                <span className="text-[11px] font-semibold text-amber-700 underline">
+                  {showAwaitingReplyPanel ? 'Hide' : 'Show Inquiries'}
+                </span>
               </div>
             </div>
             <Mail className="h-4 w-4 text-amber-600 shrink-0" />
@@ -250,6 +317,204 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* OPEN THREADS LIST */}
+      {showOpenThreadsPanel && (
+        <div className="bg-white rounded-xl border border-indigo-200 overflow-hidden">
+          <div className="px-4 py-2.5 bg-indigo-50 border-b border-indigo-200 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-indigo-900">
+              <Clock className="h-4 w-4 text-indigo-600 shrink-0" />
+              <span>Active Open Threads ({scopedOpenThreads.length})</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('communications')}
+                className="text-xs font-semibold text-indigo-600 hover:underline cursor-pointer"
+              >
+                Go to Comms Tab →
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowOpenThreadsPanel(false)}
+                className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          <div className="divide-y divide-slate-100">
+            {scopedOpenThreads.length === 0 ? (
+              <div className="p-5 text-center text-xs text-slate-500">
+                No active open threads right now. All conversations are completed.
+              </div>
+            ) : (
+              scopedOpenThreads.map(th => {
+                const latest = th.latestMsg;
+                return (
+                  <div
+                    key={th.threadId}
+                    className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap text-slate-500">
+                        <span className="font-mono font-bold text-indigo-600">
+                          {th.threadId}
+                        </span>
+                        <span>·</span>
+                        <span className="font-bold text-slate-900">{th.manufacturerName}</span>
+                        <span>·</span>
+                        <span className="font-semibold text-slate-700">
+                          {th.messages.length} message{th.messages.length > 1 ? 's' : ''}
+                        </span>
+                        <span>·</span>
+                        <span
+                          className={`font-semibold ${
+                            latest.status === 'Action Required'
+                              ? 'text-rose-600'
+                              : latest.status === 'Awaiting Reply'
+                              ? 'text-amber-600'
+                              : 'text-indigo-600'
+                          }`}
+                        >
+                          {latest.status}
+                        </span>
+                        <span>·</span>
+                        <span className="font-mono text-slate-500 tabular-nums">
+                          Updated {latest.date}
+                        </span>
+                      </div>
+
+                      <div className="text-slate-900 font-semibold">
+                        <span className="text-indigo-700 font-bold mr-1">Latest Subject:</span>
+                        {latest.subject}
+                      </div>
+
+                      <div className="text-[11px] text-slate-600 truncate">
+                        {latest.keyOutcome || latest.fullEmailText || 'Ongoing supplier discussion'}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onOpenCommModalWithManufacturer(th.manufacturerId)}
+                        disabled={!hasPermission('canLogCommunication')}
+                        className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold disabled:opacity-40 cursor-pointer"
+                      >
+                        + Add Message
+                      </button>
+                      {hasPermission('canEditCommunication') && (
+                        <button
+                          type="button"
+                          onClick={() => handleMarkCompleted(latest.id)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1 cursor-pointer"
+                          title="Mark thread completed"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <span>Close Thread</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* AWAITING REPLY LIST */}
+      {showAwaitingReplyPanel && (
+        <div className="bg-white rounded-xl border border-amber-200 overflow-hidden">
+          <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
+              <Mail className="h-4 w-4 text-amber-600 shrink-0" />
+              <span>Pending Inquiries Awaiting Supplier Reply ({scopedAwaitingReply.length})</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAwaitingReplyPanel(false)}
+              className="text-xs font-semibold text-amber-700 hover:text-amber-900 cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="divide-y divide-slate-100">
+            {scopedAwaitingReply.length === 0 ? (
+              <div className="p-5 text-center text-xs text-slate-500">
+                No outbound communications awaiting supplier reply right now.
+              </div>
+            ) : (
+              scopedAwaitingReply.map(item => {
+                return (
+                  <div
+                    key={item.id}
+                    className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap text-slate-500">
+                        <span className="font-mono font-bold text-indigo-600">
+                          {item.manufacturerId} · {item.threadId}
+                        </span>
+                        <span>·</span>
+                        <span className="font-bold text-slate-900">{item.manufacturerName}</span>
+                        <span>·</span>
+                        <span className="font-semibold text-amber-600">Awaiting Reply</span>
+                        <span>·</span>
+                        <span className="font-mono text-slate-600 tabular-nums">
+                          Sent {item.date}
+                        </span>
+                        {item.followUpDate && (
+                          <>
+                            <span>·</span>
+                            <span className="font-mono text-amber-700 tabular-nums">
+                              Follow-up target: {item.followUpDate}
+                            </span>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="text-slate-900 font-semibold">
+                        <span className="text-amber-700 font-bold mr-1">Subject:</span>
+                        {item.subject}
+                      </div>
+
+                      <div className="text-[11px] text-slate-600 truncate">
+                        {item.keyOutcome || item.fullEmailText || 'Pending response from supplier team'}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onOpenCommModalWithManufacturer(item.manufacturerId)}
+                        disabled={!hasPermission('canLogCommunication')}
+                        className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold disabled:opacity-40 cursor-pointer"
+                      >
+                        + Follow-up
+                      </button>
+                      {hasPermission('canEditCommunication') && (
+                        <button
+                          type="button"
+                          onClick={() => handleMarkReplyReceived(item.id)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1 cursor-pointer"
+                          title="Mark supplier reply received"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          <span>Reply Received</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ACTION REQUIRED LIST */}
       {showActionRequiredPanel && (
