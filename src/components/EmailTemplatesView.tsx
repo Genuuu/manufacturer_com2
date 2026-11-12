@@ -52,7 +52,7 @@ Please let us know if you need our Gerber/CAD package or technical specification
 
 Best regards,
 {{Sender_Name}}
-Procurement & Hardware Engineering`,
+{{Position}}`,
     updatedAt: '2025-02-20',
   },
   {
@@ -74,7 +74,7 @@ Once confirmed, we can share our shipping account details or complete payment im
 
 Best regards,
 {{Sender_Name}}
-Procurement & Hardware Engineering`,
+{{Position}}`,
     updatedAt: '2025-02-20',
   },
   {
@@ -93,7 +93,7 @@ If any additional technical clarifications are needed from our side, please let 
 
 Thank you,
 {{Sender_Name}}
-Procurement & Hardware Engineering`,
+{{Position}}`,
     updatedAt: '2025-02-20',
   },
   {
@@ -114,7 +114,7 @@ Please share your engineering team's feedback so we can lock the revision.
 
 Best regards,
 {{Sender_Name}}
-Procurement & Hardware Engineering`,
+{{Position}}`,
     updatedAt: '2025-02-20',
   },
   {
@@ -135,7 +135,7 @@ If we can align on these terms, we are ready to proceed with order approval prom
 
 Best regards,
 {{Sender_Name}}
-Procurement & Hardware Engineering`,
+{{Position}}`,
     updatedAt: '2025-02-20',
   },
   {
@@ -152,7 +152,7 @@ Could you please send over the official Proforma Invoice (PI) and order confirma
 
 Thank you for your support,
 {{Sender_Name}}
-Procurement & Hardware Engineering`,
+{{Position}}`,
     updatedAt: '2025-02-20',
   },
 ];
@@ -195,6 +195,11 @@ export const EmailTemplatesView: React.FC = () => {
   const [productName, setProductName] = useState<string>('5,000 PCBs / Hardware Assemblies');
   const [quantity, setQuantity] = useState<string>('5,000 pcs');
   const [senderName, setSenderName] = useState<string>(currentUser?.name || 'Procurement Team');
+  const [senderPosition, setSenderPosition] = useState<string>(
+    currentUser?.department || 'Procurement & Hardware Engineering'
+  );
+  const [companyName, setCompanyName] = useState<string>('FabricateOps');
+  const [senderEmail, setSenderEmail] = useState<string>(currentUser?.email || '');
 
   // Copy & Log Feedback
   const [copiedField, setCopiedField] = useState<'subject' | 'body' | 'all' | null>(null);
@@ -209,12 +214,18 @@ export const EmailTemplatesView: React.FC = () => {
   const [formSubject, setFormSubject] = useState<string>('');
   const [formBody, setFormBody] = useState<string>('');
 
-  // Keep senderName synced with currentUser when user switches
+  // Keep senderName, position, and email synced with currentUser when user switches
   useEffect(() => {
     if (currentUser?.name) {
       setSenderName(currentUser.name);
     }
-  }, [currentUser?.name]);
+    if (currentUser?.department) {
+      setSenderPosition(currentUser.department);
+    }
+    if (currentUser?.email) {
+      setSenderEmail(currentUser.email);
+    }
+  }, [currentUser?.name, currentUser?.department, currentUser?.email]);
 
   // Firestore real-time sync for emailTemplates
   useEffect(() => {
@@ -314,21 +325,25 @@ export const EmailTemplatesView: React.FC = () => {
   const fillVariables = (text: string): string => {
     const supplierLabel = selectedManufacturer ? selectedManufacturer.name : 'Supplier';
     return text
-      .replace(/\{\{Supplier_Name\}\}/g, supplierLabel)
-      .replace(/\{\{Contact_Name\}\}/g, contactName || 'Team')
-      .replace(/\{\{Product_Name\}\}/g, productName || 'Requested Components')
-      .replace(/\{\{Quantity\}\}/g, quantity || 'Target Volume')
-      .replace(/\{\{Sender_Name\}\}/g, senderName || currentUser?.name || 'Procurement Team');
+      .replace(/\{\{Supplier_Name\}\}/gi, supplierLabel)
+      .replace(/\{\{Contact_Name\}\}/gi, contactName || 'Team')
+      .replace(/\{\{Product_Name\}\}/gi, productName || 'Requested Components')
+      .replace(/\{\{Quantity\}\}/gi, quantity || 'Target Volume')
+      .replace(/\{\{Sender_Name\}\}/gi, senderName || currentUser?.name || 'Procurement Team')
+      .replace(/\{\{Position\}\}/gi, senderPosition || currentUser?.department || 'Procurement & Hardware Engineering')
+      .replace(/\{\{Department\}\}/gi, senderPosition || currentUser?.department || 'Procurement & Hardware Engineering')
+      .replace(/\{\{Sender_Email\}\}/gi, senderEmail || currentUser?.email || '')
+      .replace(/\{\{Company_Name\}\}/gi, companyName || 'FabricateOps');
   };
 
   const compiledSubject = useMemo(
     () => (activeTemplate ? fillVariables(activeTemplate.subject) : ''),
-    [activeTemplate, selectedManufacturer, contactName, productName, quantity, senderName]
+    [activeTemplate, selectedManufacturer, contactName, productName, quantity, senderName, senderPosition, senderEmail, companyName]
   );
 
   const compiledBody = useMemo(
     () => (activeTemplate ? fillVariables(activeTemplate.body) : ''),
-    [activeTemplate, selectedManufacturer, contactName, productName, quantity, senderName]
+    [activeTemplate, selectedManufacturer, contactName, productName, quantity, senderName, senderPosition, senderEmail, companyName]
   );
 
   const handleCopy = async (type: 'subject' | 'body' | 'all') => {
@@ -645,7 +660,7 @@ export const EmailTemplatesView: React.FC = () => {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-500 mb-1">
                     Select Supplier
@@ -700,6 +715,32 @@ export const EmailTemplatesView: React.FC = () => {
                     onChange={e => setQuantity(e.target.value)}
                     placeholder="e.g. 5,000 units"
                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                    Sender Name <span className="text-[9px] text-indigo-600 font-normal">(Auto-filled from user profile)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={senderName}
+                    onChange={e => setSenderName(e.target.value)}
+                    placeholder="e.g. Alex Chen"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                    Position <span className="text-[9px] text-indigo-600 font-normal">(Auto-filled from user profile)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={senderPosition}
+                    onChange={e => setSenderPosition(e.target.value)}
+                    placeholder="e.g. Lead Sourcing Engineer"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-900 font-medium"
                   />
                 </div>
               </div>
@@ -909,7 +950,7 @@ export const EmailTemplatesView: React.FC = () => {
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-bold text-slate-700">Email Body *</label>
                   <span className="text-[10px] font-mono text-slate-400">
-                    Also supports {'{{Contact_Name}}'} & {'{{Sender_Name}}'}
+                    Supports {'{{Contact_Name}}'}, {'{{Sender_Name}}'}, {'{{Position}}'}
                   </span>
                 </div>
                 <textarea
