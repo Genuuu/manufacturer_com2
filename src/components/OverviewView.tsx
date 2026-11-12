@@ -40,9 +40,25 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   const [editingActionText, setEditingActionText] = useState<string>('');
 
   // Overall Metrics
-  const activeComms = communications.filter(
-    c => c.status !== 'Completed' && c.status !== 'Reply Received'
-  );
+  const allThreadIds = useMemo(() => {
+    return Array.from(new Set(communications.map(c => c.threadId || 'T001')));
+  }, [communications]);
+
+  const openThreadIds = useMemo(() => {
+    // A thread is open if at least one entry is not Completed and not Reply Received
+    const threadStatusMap = new Map<string, boolean>();
+    communications.forEach(c => {
+      const tid = c.threadId || 'T001';
+      const isOpen = c.status !== 'Completed' && c.status !== 'Reply Received';
+      if (isOpen) {
+        threadStatusMap.set(tid, true);
+      } else if (!threadStatusMap.has(tid)) {
+        threadStatusMap.set(tid, false);
+      }
+    });
+    return Array.from(threadStatusMap.entries()).filter(([_, isOpen]) => isOpen).map(([tid]) => tid);
+  }, [communications]);
+
   const awaitingReply = communications.filter(c => c.status === 'Awaiting Reply');
   const actionRequired = communications
     .filter(
@@ -187,10 +203,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             className="px-3 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-between text-left transition-colors cursor-pointer"
           >
             <div>
-              <span className="text-[11px] font-medium text-slate-500 block">Open Comms</span>
+              <span className="text-[11px] font-medium text-slate-500 block">Open Threads</span>
               <div className="text-lg font-bold text-slate-900 tabular-nums">
-                {activeComms.length}
-                <span className="text-xs font-normal text-slate-400 ml-1">/ {communications.length}</span>
+                {openThreadIds.length}
+                <span className="text-xs font-normal text-slate-400 ml-1">/ {allThreadIds.length}</span>
               </div>
             </div>
             <Clock className="h-4 w-4 text-indigo-600 shrink-0" />
