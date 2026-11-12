@@ -12,6 +12,8 @@ import {
   BarChart3,
   LogOut,
   FileSpreadsheet,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -34,6 +36,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     logout,
     sheetBackupConfig,
     currentDataHash,
+    theme,
+    setTheme,
+    toggleTheme,
   } = useApp();
 
   const isSheetOutOfSync = Boolean(
@@ -113,8 +118,22 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             </div>
 
-            {/* Mobile & Small Tablet Actions (< 768px): AI Paste, Log Comm & Account Menu */}
+            {/* Mobile & Small Tablet Actions (< 768px): Theme Toggle, AI Paste, Log Comm & Account Menu */}
             <div className="flex items-center gap-1.5 md:hidden shrink-0">
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="min-h-[38px] px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 flex items-center justify-center active:scale-95 transition-all cursor-pointer"
+                title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                aria-label="Toggle Light/Dark Mode"
+              >
+                {theme === 'dark' ? (
+                  <Sun className="h-4 w-4 text-amber-400" />
+                ) : (
+                  <Moon className="h-4 w-4 text-slate-600" />
+                )}
+              </button>
+
               <button
                 onClick={onOpenAiCommModal}
                 disabled={!hasPermission('canLogCommunication')}
@@ -160,6 +179,39 @@ export const Navbar: React.FC<NavbarProps> = ({
                       >
                         {getRoleLabel(currentUser.role)}
                       </span>
+                    </div>
+
+                    {/* Appearance / Theme Switcher */}
+                    <div className="py-2 px-1 border-b border-slate-100">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 mb-1.5">
+                        Appearance
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => setTheme('light')}
+                          className={`flex items-center justify-center gap-1 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                            theme === 'light'
+                              ? 'bg-white text-slate-900 shadow-2xs'
+                              : 'text-slate-500 hover:text-slate-900'
+                          }`}
+                        >
+                          <Sun className="h-3 w-3 text-amber-500" />
+                          <span>Light</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTheme('dark')}
+                          className={`flex items-center justify-center gap-1 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                            theme === 'dark'
+                              ? 'bg-slate-900 text-white shadow-2xs'
+                              : 'text-slate-500 hover:text-slate-900'
+                          }`}
+                        >
+                          <Moon className="h-3 w-3 text-indigo-400" />
+                          <span>Dark</span>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mt-1.5">
@@ -301,6 +353,39 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Tablet & Desktop Right Actions (>= 768px) */}
             <div className="hidden md:flex items-center gap-1.5 lg:gap-2 shrink-0">
+              {/* Light / Dark Mode Toggle Pill */}
+              <div
+                className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/80"
+                title="Switch between Light Mode and Dark Mode"
+              >
+                <button
+                  type="button"
+                  onClick={() => setTheme('light')}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                    theme === 'light'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                  title="Light Mode"
+                >
+                  <Sun className={`h-3.5 w-3.5 ${theme === 'light' ? 'text-amber-500' : 'text-slate-400'}`} />
+                  <span className="hidden xl:inline">Light</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTheme('dark')}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                    theme === 'dark'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                  title="Dark Mode"
+                >
+                  <Moon className={`h-3.5 w-3.5 ${theme === 'dark' ? 'text-indigo-400' : 'text-slate-400'}`} />
+                  <span className="hidden xl:inline">Dark</span>
+                </button>
+              </div>
+
               {/* Active User Profile Menu */}
               <div className="relative" ref={desktopDropdownRef}>
                 <button
@@ -345,6 +430,39 @@ export const Navbar: React.FC<NavbarProps> = ({
                       >
                         {getRoleLabel(currentUser.role)}
                       </span>
+                    </div>
+
+                    {/* Appearance / Theme Switcher */}
+                    <div className="py-2 px-1 border-b border-slate-100">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 mb-1.5">
+                        Theme Mode
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => setTheme('light')}
+                          className={`flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                            theme === 'light'
+                              ? 'bg-white text-slate-900 shadow-2xs'
+                              : 'text-slate-500 hover:text-slate-900'
+                          }`}
+                        >
+                          <Sun className="h-3.5 w-3.5 text-amber-500" />
+                          <span>Light</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTheme('dark')}
+                          className={`flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                            theme === 'dark'
+                              ? 'bg-slate-900 text-white shadow-2xs'
+                              : 'text-slate-500 hover:text-slate-900'
+                          }`}
+                        >
+                          <Moon className="h-3.5 w-3.5 text-indigo-400" />
+                          <span>Dark</span>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="mt-1.5">

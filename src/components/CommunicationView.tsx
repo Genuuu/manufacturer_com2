@@ -254,437 +254,62 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3.5">
 
-      {/* VIEW MODE SWITCHER & QUICK FILTER PILLS */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 bg-white p-2.5 sm:p-3 rounded-2xl border border-slate-200 shadow-2xs">
-        
-        {/* Left: Mode Toggle + Collapse/Expand All */}
-        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-          <div className="grid grid-cols-2 sm:flex items-center bg-slate-100 p-1 rounded-xl w-full sm:w-fit">
-            <button
-              onClick={() => setDisplayMode('threads')}
-              className={`flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                displayMode === 'threads'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${displayMode === 'threads' ? 'text-indigo-600' : 'text-slate-500'}`} />
-              <span className="truncate">Conversation Threads ({threadGroups.length})</span>
-            </button>
-
-            <button
-              onClick={() => setDisplayMode('table')}
-              className={`flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 sm:py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                displayMode === 'table'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Layers className={`h-3.5 w-3.5 shrink-0 ${displayMode === 'table' ? 'text-indigo-600' : 'text-slate-500'}`} />
-              <span className="truncate">All Logs Table ({filteredComms.length})</span>
-            </button>
-          </div>
-
-          {displayMode === 'threads' && threadGroups.length > 0 && (
-            <div className="grid grid-cols-2 sm:flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
+      {/* UNIFIED COMPACT CONTROL BAR */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-2xs space-y-2.5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+          {/* Left: View Switcher + Search Input + Supplier Dropdown */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
+            <div className="grid grid-cols-2 sm:flex items-center bg-slate-100 p-1 rounded-xl shrink-0">
               <button
-                onClick={collapseAllThreads}
-                className="justify-center px-2.5 py-1.5 sm:py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                title="Collapse all threads"
-              >
-                <ChevronUp className="h-3.5 w-3.5" />
-                <span>Collapse All</span>
-              </button>
-              <button
-                onClick={expandAllThreads}
-                className="justify-center px-2.5 py-1.5 sm:py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                title="Expand all threads"
-              >
-                <ChevronDown className="h-3.5 w-3.5" />
-                <span>Expand All</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Right: Quick Action Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-          <span className="text-[11px] font-semibold text-slate-400 mr-1 whitespace-nowrap">Quick Filter:</span>
-          
-          <button
-            onClick={() => {
-              setSelectedCommType('ALL');
-              setSelectedStatus('ALL');
-              setOnlyWithFollowup(false);
-            }}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
-              selectedCommType === 'ALL' && selectedStatus === 'ALL' && !onlyWithFollowup
-                ? 'bg-slate-900 text-white font-semibold'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            All Records
-          </button>
-
-          <button
-            onClick={() => setSelectedCommType(selectedCommType === 'ALL_EMAILS' ? 'ALL' : 'ALL_EMAILS')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
-              selectedCommType === 'ALL_EMAILS'
-                ? 'bg-blue-600 text-white font-semibold'
-                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-            }`}
-          >
-            <Mail className="h-3 w-3" />
-            <span>Emails Only</span>
-          </button>
-
-          <button
-            onClick={() => setSelectedCommType(selectedCommType === 'Live Chat (Session)' ? 'ALL' : 'Live Chat (Session)')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
-              selectedCommType === 'Live Chat (Session)'
-                ? 'bg-emerald-600 text-white font-semibold'
-                : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-            }`}
-          >
-            <MessageSquare className="h-3 w-3" />
-            <span>Live Chats</span>
-          </button>
-
-          <button
-            onClick={() => setSelectedStatus(selectedStatus === 'Awaiting Reply' ? 'ALL' : 'Awaiting Reply')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
-              selectedStatus === 'Awaiting Reply'
-                ? 'bg-amber-600 text-white font-semibold'
-                : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
-            }`}
-          >
-            <Clock className="h-3 w-3" />
-            <span>Awaiting Reply ({awaitingReplyCount})</span>
-          </button>
-
-          <button
-            onClick={() => {
-              const nextStatus =
-                selectedStatus === 'ACTION_REQUIRED_GROUP' ? 'ALL' : 'ACTION_REQUIRED_GROUP';
-              setSelectedStatus(nextStatus);
-              if (nextStatus === 'ACTION_REQUIRED_GROUP') {
-                setShowActionRequiredDrawer(true);
-              }
-            }}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
-              selectedStatus === 'ACTION_REQUIRED_GROUP' || selectedStatus === 'Action Required'
-                ? 'bg-rose-600 text-white font-semibold shadow-2xs'
-                : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-            }`}
-          >
-            <AlertCircle className="h-3 w-3" />
-            <span>Action Required ({actionRequiredItems.length})</span>
-          </button>
-
-          <button
-            onClick={() => setShowActionRequiredDrawer(prev => !prev)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer border ${
-              showActionRequiredDrawer
-                ? 'bg-slate-900 text-white border-slate-900'
-                : 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50'
-            }`}
-            title="Toggle panel showing what requires an action"
-          >
-            <Eye className="h-3 w-3" />
-            <span>
-              {showActionRequiredDrawer ? 'Hide What Requires Action' : 'Show What Requires Action'}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setOnlyWithFollowup(!onlyWithFollowup)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
-              onlyWithFollowup
-                ? 'bg-indigo-600 text-white font-semibold'
-                : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-            }`}
-          >
-            <Calendar className="h-3 w-3" />
-            <span>Follow-ups Due ({followupsDueCount})</span>
-          </button>
-        </div>
-      </div>
-
-      {/* EXPANDABLE "WHAT REQUIRES AN ACTION" SUMMARY DRAWER */}
-      {showActionRequiredDrawer && (
-        <div className="bg-white rounded-2xl border-2 border-rose-200 shadow-sm overflow-hidden animate-in fade-in">
-          <div className="p-3.5 sm:p-4 bg-rose-950 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <div className="flex items-start sm:items-center gap-2.5">
-              <div className="h-8 w-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0">
-                <AlertCircle className="h-4 w-4" />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-bold text-xs sm:text-sm text-white">
-                    What Requires an Action ({actionRequiredItems.length})
-                  </h3>
-                  <span className="text-[10px] font-mono bg-rose-500/30 text-rose-100 px-2 py-0.5 rounded font-semibold">
-                    Action Queue & Pending Reviews
-                  </span>
-                </div>
-                <p className="text-[11px] text-rose-200">
-                  Direct view of every supplier thread requiring engineering review, approval, or follow-up action
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedStatus(
-                    selectedStatus === 'ACTION_REQUIRED_GROUP' ? 'ALL' : 'ACTION_REQUIRED_GROUP'
-                  )
-                }
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-                  selectedStatus === 'ACTION_REQUIRED_GROUP'
-                    ? 'bg-white text-rose-900 border-white'
-                    : 'bg-rose-800/80 hover:bg-rose-800 text-rose-100 border-rose-700'
+                onClick={() => setDisplayMode('threads')}
+                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  displayMode === 'threads'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {selectedStatus === 'ACTION_REQUIRED_GROUP'
-                  ? 'Showing Only Action Items in List'
-                  : 'Filter List to Action Items Only'}
+                <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${displayMode === 'threads' ? 'text-indigo-600' : 'text-slate-500'}`} />
+                <span>Threads ({threadGroups.length})</span>
               </button>
+
               <button
-                type="button"
-                onClick={() => setShowActionRequiredDrawer(false)}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-900/70 hover:bg-slate-900 text-slate-200 border border-rose-800 cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-
-          <div className="p-3.5 sm:p-4 bg-rose-50/30 space-y-2.5">
-            {actionRequiredItems.length === 0 ? (
-              <div className="p-6 bg-white rounded-xl border border-slate-200 text-center space-y-1.5">
-                <CheckCircle2 className="h-7 w-7 text-emerald-500 mx-auto" />
-                <div className="font-bold text-xs sm:text-sm text-slate-900">
-                  All Caught Up — No Communications Currently Require Action
-                </div>
-                <p className="text-xs text-slate-500">
-                  Set any communication status to &ldquo;Action Required&rdquo; or &ldquo;Pending Review&rdquo;, or enter a Next Action step to track it here.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {actionRequiredItems.map(item => (
-                  <div
-                    key={item.id}
-                    className="bg-white rounded-xl border border-rose-200 p-3.5 shadow-2xs flex flex-col justify-between space-y-2.5 hover:border-rose-300 transition-all"
-                  >
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono text-[11px] font-bold bg-slate-900 text-white px-2 py-0.5 rounded">
-                            {item.manufacturerId}
-                          </span>
-                          <span className="font-bold text-slate-900">{item.manufacturerName}</span>
-                          <button
-                            type="button"
-                            onClick={() => setActiveThreadModalId(item.threadId)}
-                            className="font-mono text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-1.5 py-0.5 rounded cursor-pointer"
-                          >
-                            {item.threadId}
-                          </button>
-                        </div>
-
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                            item.status === 'Action Required'
-                              ? 'bg-rose-100 text-rose-800 border-rose-300'
-                              : item.status === 'Pending Review'
-                              ? 'bg-amber-100 text-amber-800 border-amber-300'
-                              : 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                          }`}
-                        >
-                          {item.status}
-                        </span>
-                      </div>
-
-                      {/* Explicit Box Showing WHAT Requires Action */}
-                      <div className="p-2.5 bg-rose-50 border border-rose-200/90 rounded-lg space-y-1">
-                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-rose-800">
-                          <span className="flex items-center gap-1">
-                            <AlertCircle className="h-3 w-3 text-rose-600 shrink-0" />
-                            <span>Required Action:</span>
-                          </span>
-                          {item.followUpDate && (
-                            <span className="font-mono text-rose-900 bg-white/80 px-1.5 py-0.2 rounded border border-rose-200">
-                              Due: {item.followUpDate}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs font-bold text-rose-950 leading-relaxed">
-                          {item.nextAction || item.keyOutcome || item.subject}
-                        </div>
-                      </div>
-
-                      <div className="text-[11px] text-slate-600">
-                        <span className="font-semibold text-slate-800">{item.subject}</span>
-                        {item.nextAction && item.keyOutcome && (
-                          <p className="text-slate-500 line-clamp-1 mt-0.5">{item.keyOutcome}</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setActiveThreadModalId(item.threadId)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold cursor-pointer"
-                        >
-                          Open Thread {item.threadId}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onOpenCommModal(item)}
-                          disabled={!hasPermission('canEditCommunication')}
-                          className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold disabled:opacity-40 cursor-pointer"
-                        >
-                          Edit / Specify Action
-                        </button>
-                      </div>
-
-                      {hasPermission('canEditCommunication') && (
-                        <button
-                          type="button"
-                          onClick={() => handleStatusChange(item.id, 'Completed')}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1 cursor-pointer"
-                        >
-                          <CheckCircle2 className="h-3 w-3" />
-                          <span>Complete</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* QUICK MANUFACTURER FILTER PILLS */}
-      {manufacturers.length > 0 && (
-        <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-2xs flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 shrink-0 flex items-center gap-1">
-            <Building2 className="h-3.5 w-3.5 text-indigo-500" />
-            <span>Supplier:</span>
-          </span>
-
-          <button
-            onClick={() => setSelectedManufacturer('ALL')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-              selectedManufacturer === 'ALL'
-                ? 'bg-indigo-600 text-white shadow-2xs'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            All ({communications.length})
-          </button>
-
-          {manufacturers.map(m => {
-            const count = communications.filter(c => c.manufacturerId === m.id).length;
-            const isSelected = selectedManufacturer === m.id;
-            return (
-              <button
-                key={m.id}
-                onClick={() => setSelectedManufacturer(isSelected ? 'ALL' : m.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white shadow-2xs'
-                    : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100'
+                onClick={() => setDisplayMode('table')}
+                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  displayMode === 'table'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <span>{m.name}</span>
-                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
-                  isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'
-                }`}>
-                  {count}
-                </span>
+                <Layers className={`h-3.5 w-3.5 shrink-0 ${displayMode === 'table' ? 'text-indigo-600' : 'text-slate-500'}`} />
+                <span>Table ({filteredComms.length})</span>
               </button>
-            );
-          })}
-        </div>
-      )}
+            </div>
 
-      {/* FILTER & SEARCH BAR */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-3 sm:p-4 shadow-2xs space-y-3">
-        
-        {/* Top Row: Search Input + Mobile Filter Toggle + Clear Filters */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2 flex-1 max-w-xl">
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search threads, part numbers, outcomes..."
+                placeholder="Search threads, outcomes, specs..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-900 placeholder:text-slate-400 font-medium transition-all"
+                className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-900 placeholder:text-slate-400 font-medium"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowMobileFilters(!showMobileFilters)}
-              className={`sm:hidden px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1 shrink-0 transition-colors ${
-                showMobileFilters || isFiltered
-                  ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
-                  : 'bg-slate-50 border-slate-200 text-slate-700'
-              }`}
-            >
-              <Filter className="h-3.5 w-3.5" />
-              <span>Filters</span>
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between sm:justify-end gap-2">
-            <span className="text-xs text-slate-500 font-medium">
-              Showing <strong className="text-slate-900">{filteredComms.length}</strong> entries in <strong className="text-indigo-700">{threadGroups.length}</strong> threads
-            </span>
-            {isFiltered && (
-              <button
-                onClick={resetFilters}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
-              >
-                <RotateCcw className="h-3 w-3" />
-                <span>Reset</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Bottom Row: Dropdown Filters (Collapsible on mobile) */}
-        <div className={`${showMobileFilters ? 'grid' : 'hidden sm:grid'} grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2 border-t border-slate-100 text-xs`}>
-          
-          {/* Filter by Manufacturer */}
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-              Manufacturer
-            </label>
             <select
               value={selectedManufacturer}
               onChange={e => setSelectedManufacturer(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer shrink-0"
             >
               <option value="ALL">All Suppliers ({manufacturers.length})</option>
               {manufacturers.map(m => (
@@ -695,72 +320,253 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
             </select>
           </div>
 
-          {/* Filter by Communication Type / Channel */}
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-              Communication Type
-            </label>
-            <select
-              value={selectedCommType}
-              onChange={e => setSelectedCommType(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+          {/* Right: Quick Action Pills & More Filters Toggle */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0 scrollbar-none">
+            <button
+              onClick={() => {
+                setSelectedCommType('ALL');
+                setSelectedStatus('ALL');
+                setOnlyWithFollowup(false);
+              }}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                selectedCommType === 'ALL' && selectedStatus === 'ALL' && !onlyWithFollowup
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
             >
-              <option value="ALL">All Channels & Types</option>
-              <option value="ALL_EMAILS">All Emails (Sent & Received)</option>
-              {commTypes.map(ct => (
-                <option key={ct} value={ct}>
-                  {ct}
-                </option>
-              ))}
-            </select>
-          </div>
+              All
+            </button>
 
-          {/* Filter by Current Status */}
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-              Current Status
-            </label>
-            <select
-              value={selectedStatus}
-              onChange={e => setSelectedStatus(e.target.value)}
-              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium focus:outline-hidden focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+            <button
+              onClick={() =>
+                setSelectedStatus(selectedStatus === 'Awaiting Reply' ? 'ALL' : 'Awaiting Reply')
+              }
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
+                selectedStatus === 'Awaiting Reply'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+              }`}
             >
-              <option value="ALL">All Statuses</option>
-              <option value="ACTION_REQUIRED_GROUP">⚡ All Action Required & Pending Review</option>
-              <option value="Action Required">Action Required</option>
-              <option value="Pending Review">Pending Review</option>
-              <option value="Awaiting Reply">Awaiting Reply</option>
-              <option value="Reply Received">Reply Received</option>
-              <option value="Information Received">Information Received</option>
-              <option value="Completed">Completed</option>
-            </select>
-          </div>
+              <Clock className="h-3 w-3" />
+              <span>Awaiting ({awaitingReplyCount})</span>
+            </button>
 
-          {/* Follow-up Toggle */}
-          <div className="flex items-end">
-            <label className="flex items-center gap-2 cursor-pointer w-full px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg select-none">
-              <input
-                type="checkbox"
-                checked={onlyWithFollowup}
-                onChange={e => setOnlyWithFollowup(e.target.checked)}
-                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
-              />
-              <span className="font-semibold text-slate-700">Follow-up Due Only</span>
-            </label>
-          </div>
+            <button
+              onClick={() => {
+                const nextStatus =
+                  selectedStatus === 'ACTION_REQUIRED_GROUP' ? 'ALL' : 'ACTION_REQUIRED_GROUP';
+                setSelectedStatus(nextStatus);
+                if (nextStatus === 'ACTION_REQUIRED_GROUP') {
+                  setShowActionRequiredDrawer(true);
+                }
+              }}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
+                selectedStatus === 'ACTION_REQUIRED_GROUP' || selectedStatus === 'Action Required'
+                  ? 'bg-rose-600 text-white'
+                  : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+              }`}
+            >
+              <AlertCircle className="h-3 w-3" />
+              <span>Action ({actionRequiredItems.length})</span>
+            </button>
 
+            <button
+              onClick={() => setShowActionRequiredDrawer(prev => !prev)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer border ${
+                showActionRequiredDrawer
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50'
+              }`}
+              title="Toggle list of items requiring action"
+            >
+              <Eye className="h-3 w-3" />
+              <span>{showActionRequiredDrawer ? 'Hide Actions' : 'What Needs Action'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 whitespace-nowrap transition-colors cursor-pointer ${
+                showMobileFilters || selectedCommType !== 'ALL' || onlyWithFollowup
+                  ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Filter className="h-3 w-3" />
+              <span>Filters</span>
+            </button>
+
+            {isFiltered && (
+              <button
+                onClick={resetFilters}
+                className="px-2 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-1 cursor-pointer shrink-0"
+                title="Reset all filters"
+              >
+                <RotateCcw className="h-3 w-3" />
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Collapsible Secondary Filter Row */}
+        {showMobileFilters && (
+          <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={selectedCommType}
+                onChange={e => setSelectedCommType(e.target.value)}
+                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium cursor-pointer"
+              >
+                <option value="ALL">All Channels</option>
+                <option value="ALL_EMAILS">All Emails</option>
+                {commTypes.map(ct => (
+                  <option key={ct} value={ct}>
+                    {ct}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={selectedStatus}
+                onChange={e => setSelectedStatus(e.target.value)}
+                className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-medium cursor-pointer"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="ACTION_REQUIRED_GROUP">⚡ All Action Required</option>
+                <option value="Action Required">Action Required</option>
+                <option value="Pending Review">Pending Review</option>
+                <option value="Awaiting Reply">Awaiting Reply</option>
+                <option value="Reply Received">Reply Received</option>
+                <option value="Information Received">Information Received</option>
+                <option value="Completed">Completed</option>
+              </select>
+
+              <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={onlyWithFollowup}
+                  onChange={e => setOnlyWithFollowup(e.target.checked)}
+                  className="rounded border-slate-300 text-indigo-600 h-3.5 w-3.5"
+                />
+                <span className="font-medium text-slate-700">Follow-up Due ({followupsDueCount})</span>
+              </label>
+            </div>
+
+            {displayMode === 'threads' && threadGroups.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={expandAllThreads}
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                >
+                  Expand All
+                </button>
+                <button
+                  onClick={collapseAllThreads}
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
+                >
+                  Collapse All
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* COMPACT "WHAT REQUIRES AN ACTION" DRAWER */}
+      {showActionRequiredDrawer && (
+        <div className="bg-white rounded-2xl border border-rose-200 shadow-xs overflow-hidden">
+          <div className="px-4 py-2.5 bg-rose-950 text-white flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+              <span className="font-bold text-xs sm:text-sm">
+                What Requires an Action ({actionRequiredItems.length})
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowActionRequiredDrawer(false)}
+              className="text-xs font-semibold text-rose-200 hover:text-white px-2 py-0.5 rounded cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+
+          {actionRequiredItems.length === 0 ? (
+            <div className="p-4 text-center text-xs text-slate-500">
+              No communications currently require action.
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {actionRequiredItems.map(item => (
+                <div
+                  key={item.id}
+                  className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-rose-50/30 transition-colors text-xs"
+                >
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-slate-900">{item.manufacturerName}</span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveThreadModalId(item.threadId)}
+                        className="font-mono text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 cursor-pointer"
+                      >
+                        {item.threadId}
+                      </button>
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                        {item.status}
+                      </span>
+                      {item.followUpDate && (
+                        <span className="text-[10px] font-mono text-slate-500">
+                          Due: {item.followUpDate}
+                        </span>
+                      )}
+                    </div>
+                    <div className="font-semibold text-rose-900 truncate">
+                      Action: {item.nextAction || item.keyOutcome || item.subject}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setActiveThreadModalId(item.threadId)}
+                      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold cursor-pointer"
+                    >
+                      Open
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onOpenCommModal(item)}
+                      disabled={!hasPermission('canEditCommunication')}
+                      className="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-semibold disabled:opacity-40 cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                    {hasPermission('canEditCommunication') && (
+                      <button
+                        type="button"
+                        onClick={() => handleStatusChange(item.id, 'Completed')}
+                        className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold cursor-pointer"
+                      >
+                        Done
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* DISPLAY MODE 1: THREAD CONVERSATION GROUPS */}
       {displayMode === 'threads' && (
-        <div className="space-y-4">
+        <div className="space-y-2.5">
           {threadGroups.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center text-slate-400 text-xs">
-              <MessageSquare className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400 text-xs">
               <p className="font-semibold text-slate-600">No communication threads match your filters.</p>
               {isFiltered && (
-                <button onClick={resetFilters} className="mt-2 text-indigo-600 hover:underline font-semibold">
+                <button onClick={resetFilters} className="mt-1.5 text-indigo-600 hover:underline font-semibold cursor-pointer">
                   Reset filters
                 </button>
               )}
@@ -781,447 +587,262 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
                     latestActionMsg ? 'border-rose-300' : 'border-slate-200'
                   }`}
                 >
-                  {/* Thread Header Bar */}
+                  {/* Clean Compact Thread Header */}
                   <div
                     onClick={() => toggleThreadExpand(group.threadId)}
-                    className="p-3 sm:p-4 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 cursor-pointer select-none hover:bg-slate-800/95 transition-colors"
+                    className="px-4 py-3 bg-white hover:bg-slate-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 cursor-pointer select-none transition-colors"
                   >
-                    <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0">
-                      <span className="font-mono text-xs font-bold bg-indigo-600 text-white px-2 sm:px-2.5 py-1 rounded-lg shadow-xs shrink-0">
+                    <div className="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
+                      <span className="font-mono text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-lg shrink-0">
                         {group.threadId}
                       </span>
 
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                          <h3 className="font-bold text-xs sm:text-sm text-white">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-xs sm:text-sm text-slate-900">
                             {group.manufacturerName}
-                          </h3>
-                          <span className="text-slate-400 text-[11px] font-mono">
-                            ({group.manufacturerId})
                           </span>
-                          <span className="text-slate-600 hidden sm:inline">•</span>
-                          <span className="text-[11px] text-indigo-300 font-mono bg-indigo-500/20 px-1.5 py-0.2 rounded">
-                            {group.messages.length} {group.messages.length === 1 ? 'entry' : 'entries'}
+                          <span className="text-xs text-slate-700 font-medium truncate">
+                            — {group.primarySubject}
                           </span>
-                          {latestActionMsg && (
-                            <span className="text-[10px] font-bold bg-rose-500/30 text-rose-200 border border-rose-400/40 px-2 py-0.5 rounded-full flex items-center gap-1">
-                              <AlertCircle className="h-3 w-3 text-rose-300" />
-                              <span>Action Required</span>
-                            </span>
-                          )}
+                          <span className="text-[11px] font-mono text-slate-400">
+                            ({group.messages.length})
+                          </span>
                         </div>
-                        <p className="text-xs text-slate-200 font-medium line-clamp-1 mt-0.5">
-                          {group.primarySubject}
-                        </p>
+                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                          <span className="font-mono">{group.latestMsg.date}:</span> {group.latestMsg.keyOutcome}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0 pt-1 sm:pt-0 border-t border-slate-800 sm:border-0" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0" onClick={e => e.stopPropagation()}>
                       <span
-                        className={`text-[10px] font-semibold px-2.5 py-1 rounded-full border ${
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
                           group.status === 'Completed' || group.status === 'Reply Received'
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             : group.status === 'Information Received'
-                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
                             : group.status === 'Action Required'
-                            ? 'bg-rose-500/25 text-rose-200 border-rose-500/40'
-                            : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
                         }`}
                       >
                         {group.status}
                       </span>
 
                       <button
+                        onClick={() => setActiveThreadModalId(group.threadId)}
+                        className="px-2 py-1 rounded-lg text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                      >
+                        Modal
+                      </button>
+
+                      <button
                         onClick={() => toggleThreadExpand(group.threadId)}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1 transition-colors cursor-pointer"
-                        title={isCollapsed ? 'Expand thread messages' : 'Collapse thread messages'}
+                        className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
+                        title={isCollapsed ? 'Expand messages' : 'Collapse messages'}
                       >
                         {isCollapsed ? (
-                          <>
-                            <ChevronDown className="h-3.5 w-3.5 text-indigo-400" />
-                            <span>Expand</span>
-                          </>
+                          <ChevronDown className="h-4 w-4" />
                         ) : (
-                          <>
-                            <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
-                            <span>Collapse</span>
-                          </>
+                          <ChevronUp className="h-4 w-4" />
                         )}
                       </button>
                     </div>
                   </div>
 
-                  {/* If Collapsed: Show Compact Latest Activity Bar + Explicit Action Required Callout */}
-                  {isCollapsed ? (
-                    <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200/80 text-xs space-y-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 text-slate-600 truncate max-w-2xl">
-                          <span className="font-mono text-[11px] font-semibold text-slate-500">
-                            Latest ({group.latestMsg.date}):
-                          </span>
-                          <span className="font-medium text-slate-800 truncate">
-                            {group.latestMsg.keyOutcome}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          {group.latestMsg.followUpDate && group.status !== 'Completed' && (
-                            <span className="text-[11px] font-mono text-amber-700 font-semibold flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              Follow-up: {group.latestMsg.followUpDate}
-                            </span>
-                          )}
-                          <button
-                            onClick={() => setActiveThreadModalId(group.threadId)}
-                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
-                          >
-                            Full View →
-                          </button>
-                        </div>
+                  {/* Single-Line Action Callout When Applicable */}
+                  {isCollapsed && latestActionMsg && (
+                    <div className="px-4 py-2 bg-rose-50/70 border-t border-rose-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 text-rose-900 min-w-0">
+                        <AlertCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                        <span className="font-bold truncate">
+                          Action: {latestActionMsg.nextAction || latestActionMsg.keyOutcome || latestActionMsg.subject}
+                        </span>
                       </div>
-
-                      {latestActionMsg && (
-                        <div className="px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 text-rose-950">
-                            <AlertCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
-                            <span className="text-[10px] font-black uppercase tracking-wider text-rose-800">
-                              What Requires Action:
-                            </span>
-                            <span className="font-bold text-xs">
-                              {latestActionMsg.nextAction || latestActionMsg.keyOutcome || latestActionMsg.subject}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => onOpenCommModal(latestActionMsg)}
-                              disabled={!hasPermission('canEditCommunication')}
-                              className="text-[11px] font-semibold text-rose-700 hover:text-rose-900 underline disabled:opacity-40 cursor-pointer"
-                            >
-                              Edit Action
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => toggleThreadExpand(group.threadId)}
-                              className="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900 cursor-pointer"
-                            >
-                              Inspect Thread ↓
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => onOpenCommModal(latestActionMsg)}
+                        disabled={!hasPermission('canEditCommunication')}
+                        className="text-[11px] font-semibold text-rose-700 hover:underline disabled:opacity-40 cursor-pointer shrink-0"
+                      >
+                        Edit Action
+                      </button>
                     </div>
-                  ) : (
-                    /* Expanded Thread Messages Stream */
-                    <>
-                      <div className="p-3 sm:p-5 bg-slate-50/50 space-y-3 sm:space-y-4">
-                        <div className="relative pl-5 sm:pl-6 space-y-3 sm:space-y-4 before:absolute before:left-2 sm:before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
-                          
-                          {group.messages.map((comm, idx) => {
-                            const isSent = comm.channel.toLowerCase().includes('sent');
-                            const isLiveChat =
-                              comm.channel.toLowerCase().includes('live chat') ||
-                              Boolean(comm.chatTurns && comm.chatTurns.length > 0) ||
-                              Boolean(comm.outboundSummary && comm.inboundResponse);
+                  )}
 
-                            return (
-                              <div key={comm.id} className="relative group/msg">
-                                
-                                {/* Timeline Bullet Node */}
-                                <div
-                                  className={`absolute -left-5 sm:-left-6 top-3 h-4 w-4 sm:h-5 sm:w-5 rounded-full border-2 bg-white flex items-center justify-center text-[9px] sm:text-[10px] font-bold ${
-                                    isLiveChat
-                                      ? 'border-emerald-600 text-emerald-600'
-                                      : isSent
-                                      ? 'border-indigo-600 text-indigo-600'
-                                      : 'border-blue-600 text-blue-600'
+                  {/* Expanded Thread Messages Stream */}
+                  {!isCollapsed && (
+                    <div className="p-3 sm:p-4 bg-slate-50/60 border-t border-slate-100 space-y-2.5">
+                      {group.messages.map((comm, idx) => {
+                        const hasExtraDetails = Boolean(
+                          (comm.chatTurns && comm.chatTurns.length > 0) ||
+                            comm.outboundSummary ||
+                            comm.inboundResponse ||
+                            comm.informationReceived ||
+                            comm.fullEmailText
+                        );
+                        const hasDocs = Boolean(
+                          (comm.documentsReceived && comm.documentsReceived.length > 0) ||
+                            (comm.attachments && comm.attachments.length > 0)
+                        );
+
+                        return (
+                          <div
+                            key={comm.id}
+                            className="bg-white rounded-xl border border-slate-200 p-3 space-y-2 text-xs"
+                          >
+                            {/* Message Header */}
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                  #{idx + 1}
+                                </span>
+                                <span className="inline-flex items-center gap-1 font-semibold text-slate-700">
+                                  {getChannelIcon(comm.channel)}
+                                  <span>{comm.channel}</span>
+                                </span>
+                                <span className="font-mono text-slate-500">{comm.date}</span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  value={comm.status}
+                                  onChange={e => handleStatusChange(comm.id, e.target.value as CommStatus)}
+                                  disabled={!hasPermission('canEditCommunication')}
+                                  className={`text-[10px] font-semibold rounded px-2 py-0.5 border cursor-pointer ${
+                                    comm.status === 'Completed' || comm.status === 'Reply Received'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : comm.status === 'Information Received'
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                      : comm.status === 'Action Required'
+                                      ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200'
                                   }`}
                                 >
-                                  {idx + 1}
-                                </div>
+                                  <option value="Completed">Completed</option>
+                                  <option value="Awaiting Reply">Awaiting Reply</option>
+                                  <option value="Reply Received">Reply Received</option>
+                                  <option value="Information Received">Information Received</option>
+                                  <option value="Pending Review">Pending Review</option>
+                                  <option value="Action Required">Action Required</option>
+                                </select>
 
-                                {/* Message Box */}
-                                <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-4 shadow-2xs space-y-2.5">
-                                  
-                                  {/* Message Header */}
-                                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                                    <div className="flex items-center gap-2">
-                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border ${
-                                        isLiveChat
-                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                          : isSent
-                                          ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                          : 'bg-blue-50 text-blue-700 border-blue-200'
-                                      }`}>
-                                        {isLiveChat ? (
-                                          <MessageSquare className="h-3 w-3" />
-                                        ) : isSent ? (
-                                          <Send className="h-3 w-3" />
-                                        ) : (
-                                          <Mail className="h-3 w-3" />
-                                        )}
-                                        <span>{comm.channel}</span>
-                                        {comm.chatTurns && comm.chatTurns.length > 0 && (
-                                          <span className="ml-1 px-1.5 py-0.2 bg-emerald-200/70 text-emerald-900 rounded text-[10px] font-bold">
-                                            {comm.chatTurns.length} turns
-                                          </span>
-                                        )}
-                                      </span>
+                                <button
+                                  onClick={() => onOpenCommModal(comm)}
+                                  disabled={!hasPermission('canEditCommunication')}
+                                  className="p-1 text-slate-400 hover:text-indigo-600 rounded cursor-pointer"
+                                  title="Edit message"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(comm)}
+                                  disabled={!hasPermission('canDeleteCommunication')}
+                                  className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                                  title="Delete message"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
 
-                                      <span className="font-mono text-slate-600 font-semibold">{comm.date}</span>
-                                      <span className="text-slate-300">·</span>
-                                      <span className="text-slate-500 font-medium">Logged by {comm.createdBy || 'Sarah Jenkins'}</span>
-                                    </div>
+                            {/* Subject & Key Outcome */}
+                            <div>
+                              <div className="font-bold text-slate-900">{comm.subject}</div>
+                              {comm.keyOutcome && (
+                                <p className="text-slate-600 mt-0.5 whitespace-pre-line">{comm.keyOutcome}</p>
+                              )}
+                            </div>
 
-                                    <div className="flex items-center gap-1.5">
-                                      <select
-                                        value={comm.status}
-                                        onChange={e => handleStatusChange(comm.id, e.target.value as CommStatus)}
-                                        disabled={!hasPermission('canEditCommunication')}
-                                        className={`text-[10px] font-semibold rounded px-2 py-0.5 border cursor-pointer ${
-                                          comm.status === 'Completed' || comm.status === 'Reply Received'
-                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                            : comm.status === 'Information Received'
-                                            ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                                        }`}
-                                      >
-                                        <option value="Completed">Completed</option>
-                                        <option value="Awaiting Reply">Awaiting Reply</option>
-                                        <option value="Reply Received">Reply Received</option>
-                                        <option value="Information Received">Information Received</option>
-                                        <option value="Pending Review">Pending Review</option>
-                                        <option value="Action Required">Action Required</option>
-                                      </select>
-
-                                      <button
-                                        onClick={() => onOpenCommModal(comm)}
-                                        disabled={!hasPermission('canEditCommunication')}
-                                        className="p-1 text-slate-400 hover:text-indigo-600 rounded"
-                                        title="Edit message"
-                                      >
-                                        <Edit2 className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => handleDelete(comm)}
-                                        disabled={!hasPermission('canDeleteCommunication')}
-                                        className="p-1 text-slate-400 hover:text-rose-600 rounded"
-                                        title="Delete message"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  {/* Subject & Outcome / Multi-Turn Chat Stream */}
-                                  <div>
-                                    <h4 className="font-bold text-xs text-slate-900">{comm.subject}</h4>
-                                    {comm.chatTurns && comm.chatTurns.length > 0 ? (
-                                      <div className="mt-2 space-y-2">
-                                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                                          <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500 pb-1 border-b border-slate-200/80">
-                                            <span>💬 Live Chat Conversation ({comm.chatTurns.length} messages)</span>
-                                            <span>Sent & Instant Replies</span>
-                                          </div>
-                                          <div className="space-y-2">
-                                            {comm.chatTurns.map((turn, tIdx) => {
-                                              const isUs = turn.sender === 'us';
-                                              return (
-                                                <div
-                                                  key={turn.id || tIdx}
-                                                  className={`p-2.5 rounded-lg border text-xs ${
-                                                    isUs
-                                                      ? 'bg-indigo-50/70 border-indigo-200/90 mr-0 sm:mr-8'
-                                                      : 'bg-emerald-50/70 border-emerald-200/90 ml-0 sm:ml-8'
-                                                  }`}
-                                                >
-                                                  <div className="flex items-center justify-between gap-2 mb-1">
-                                                    <span
-                                                      className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                                                        isUs ? 'text-indigo-700' : 'text-emerald-800'
-                                                      }`}
-                                                    >
-                                                      {isUs ? (
-                                                        <>
-                                                          <Send className="h-2.5 w-2.5" />
-                                                          <span>📤 Turn #{tIdx + 1} · Us (Sent)</span>
-                                                        </>
-                                                      ) : (
-                                                        <>
-                                                          <MessageSquare className="h-2.5 w-2.5" />
-                                                          <span>📩 Turn #{tIdx + 1} · {comm.manufacturerName} (Reply)</span>
-                                                        </>
-                                                      )}
-                                                    </span>
-                                                    {turn.timestamp && (
-                                                      <span className="text-[10px] font-mono text-slate-400">
-                                                        {turn.timestamp}
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                  <p className="text-slate-800 font-medium whitespace-pre-line leading-relaxed">
-                                                    {turn.message}
-                                                  </p>
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-
-                                        {comm.keyOutcome && (
-                                          <div className="text-xs text-slate-700 font-medium bg-slate-50 p-2.5 rounded-lg border border-slate-200/70 whitespace-pre-line">
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
-                                              Session Summary / Outcome:
-                                            </span>
-                                            {comm.keyOutcome}
-                                          </div>
-                                        )}
-                                      </div>
-                                    ) : comm.outboundSummary || comm.inboundResponse ? (
-                                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                        {comm.outboundSummary && (
-                                          <div className="p-2.5 bg-indigo-50/60 border border-indigo-200/80 rounded-lg text-xs">
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1 mb-1">
-                                              <Send className="h-3 w-3" />
-                                              <span>📤 Sent Inquiry / Our Messages:</span>
-                                            </span>
-                                            <p className="text-slate-800 font-medium whitespace-pre-line">{comm.outboundSummary}</p>
-                                          </div>
-                                        )}
-                                        {comm.inboundResponse && (
-                                          <div className="p-2.5 bg-emerald-50/60 border border-emerald-200/80 rounded-lg text-xs">
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1 mb-1">
-                                              <MessageSquare className="h-3 w-3" />
-                                              <span>📩 Instant Reply / Outcome Received:</span>
-                                            </span>
-                                            <p className="text-slate-800 font-medium whitespace-pre-line">{comm.inboundResponse}</p>
-                                          </div>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <p className="text-xs text-slate-700 mt-1 font-medium bg-slate-50 p-2.5 rounded-lg border border-slate-200/70 whitespace-pre-line">
-                                        {comm.keyOutcome}
-                                      </p>
-                                    )}
-                                  </div>
-
-                                  {/* Saved Full Email Content */}
-                                  {comm.fullEmailText && (
-                                    <details className="group/email text-xs pt-1">
-                                      <summary className="font-semibold text-indigo-700 hover:text-indigo-900 cursor-pointer py-1 flex items-center gap-1.5 select-none">
-                                        <Mail className="h-3.5 w-3.5 text-indigo-600" />
-                                        <span>📧 View Saved Full Email Text ({comm.fullEmailText.length} characters)</span>
-                                      </summary>
-                                      <div className="mt-1.5 p-3 bg-slate-900 text-slate-100 rounded-lg font-mono text-[11px] leading-relaxed whitespace-pre-wrap border border-slate-800">
-                                        {comm.fullEmailText}
-                                      </div>
-                                    </details>
+                            {/* Action Callout if applicable */}
+                            {(comm.nextAction || isCommActionRequired(comm)) && (
+                              <div className="px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5">
+                                  <AlertCircle className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                                  <span className="font-bold">
+                                    Action: {comm.nextAction || comm.keyOutcome || 'Review required'}
+                                  </span>
+                                  {comm.followUpDate && (
+                                    <span className="font-mono text-[10px] text-rose-700">
+                                      (Due: {comm.followUpDate})
+                                    </span>
                                   )}
+                                </div>
+                              </div>
+                            )}
 
-                                  {/* Detailed Notes / Quotations */}
+                            {/* Attachments */}
+                            {hasDocs && (
+                              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                {comm.attachments?.map(att => (
+                                  <button
+                                    key={att.id}
+                                    onClick={() => onPreviewDoc(att.name, `Attachment - ${att.name}`)}
+                                    className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded font-mono text-[10px] text-indigo-700 flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Paperclip className="h-3 w-3" />
+                                    <span className="max-w-[180px] truncate">{att.name}</span>
+                                  </button>
+                                ))}
+                                {comm.documentsReceived
+                                  ?.filter(doc => !comm.attachments?.some(a => a.name === doc))
+                                  .map((doc, dIdx) => (
+                                    <button
+                                      key={dIdx}
+                                      onClick={() => onPreviewDoc(doc, `Specification - ${doc}`)}
+                                      className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded font-mono text-[10px] text-emerald-800 flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <FileText className="h-3 w-3" />
+                                      <span className="max-w-[180px] truncate">{doc}</span>
+                                    </button>
+                                  ))}
+                              </div>
+                            )}
+
+                            {/* Collapsible Technical Specs / Transcript / Email Text */}
+                            {hasExtraDetails && (
+                              <details className="pt-1 border-t border-slate-100">
+                                <summary className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer select-none">
+                                  Show Technical Details / Transcript
+                                </summary>
+                                <div className="mt-2 space-y-2">
                                   {comm.informationReceived && (
-                                    <div className="p-3 bg-white rounded-lg border border-slate-200 text-xs text-slate-800 leading-relaxed whitespace-pre-line">
-                                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                                        Technical Details & Quotation Breakdown:
-                                      </span>
+                                    <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-slate-700 whitespace-pre-line">
                                       {comm.informationReceived}
                                     </div>
                                   )}
-
-                                  {/* Attached Files & Attachments */}
-                                  {((comm.documentsReceived && comm.documentsReceived.length > 0) || (comm.attachments && comm.attachments.length > 0)) && (
-                                    <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-2 text-xs">
-                                      {comm.attachments?.map(att => (
-                                        <button
-                                          key={att.id}
-                                          onClick={() => onPreviewDoc(att.name, `Attachment - ${att.name}`)}
-                                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg font-mono text-[11px] text-indigo-800 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                                          title="Preview or download attachment"
-                                        >
-                                          <Paperclip className="h-3.5 w-3.5 text-indigo-600" />
-                                          <span className="max-w-[200px] truncate">{att.name}</span>
-                                          <Eye className="h-3 w-3 text-indigo-600 ml-1" />
-                                        </button>
-                                      ))}
-                                      {comm.documentsReceived?.filter(doc => !comm.attachments?.some(a => a.name === doc)).map((doc, dIdx) => (
-                                        <button
-                                          key={dIdx}
-                                          onClick={() => onPreviewDoc(doc, `Specification - ${doc}`)}
-                                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg font-mono text-[11px] text-emerald-800 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                                        >
-                                          <FileText className="h-3.5 w-3.5 text-emerald-600" />
-                                          <span className="max-w-[200px] truncate">{doc}</span>
-                                          <Eye className="h-3 w-3 text-emerald-600 ml-1" />
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-
-                                  {/* What Requires Action & Follow up */}
-                                  {(comm.nextAction || comm.followUpDate || isCommActionRequired(comm)) && (
-                                    <div
-                                      className={`p-2.5 rounded-lg border text-xs flex flex-wrap items-center justify-between gap-2 ${
-                                        isCommActionRequired(comm)
-                                          ? 'bg-rose-50/90 border-rose-200 text-rose-950'
-                                          : 'bg-amber-50/70 border-amber-200 text-amber-950'
-                                      }`}
-                                    >
-                                      <div className="font-medium flex items-center gap-1.5 flex-wrap">
-                                        <AlertCircle
-                                          className={`h-3.5 w-3.5 shrink-0 ${
-                                            isCommActionRequired(comm) ? 'text-rose-600' : 'text-amber-600'
+                                  {comm.chatTurns && comm.chatTurns.length > 0 && (
+                                    <div className="space-y-1.5">
+                                      {comm.chatTurns.map((turn, tIdx) => (
+                                        <div
+                                          key={turn.id || tIdx}
+                                          className={`p-2 rounded-lg border text-[11px] ${
+                                            turn.sender === 'us'
+                                              ? 'bg-indigo-50/50 border-indigo-200'
+                                              : 'bg-emerald-50/50 border-emerald-200'
                                           }`}
-                                        />
-                                        <strong className="uppercase text-[10px] tracking-wider">
-                                          What Requires Action:
-                                        </strong>
-                                        <span className="font-bold">
-                                          {comm.nextAction || comm.keyOutcome || 'Review and follow up with supplier'}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        {comm.followUpDate && (
-                                          <span className="font-mono text-[11px] font-semibold bg-white/80 px-2 py-0.5 rounded border border-rose-200/80">
-                                            Due: {comm.followUpDate}
+                                        >
+                                          <span className="font-bold text-[10px] block">
+                                            {turn.sender === 'us' ? 'Us:' : `${comm.manufacturerName}:`}
                                           </span>
-                                        )}
-                                        {hasPermission('canEditCommunication') && (
-                                          <button
-                                            type="button"
-                                            onClick={() => onOpenCommModal(comm)}
-                                            className="text-[11px] font-semibold underline hover:opacity-80 cursor-pointer"
-                                          >
-                                            {comm.nextAction ? 'Edit Action' : '+ Specify Action'}
-                                          </button>
-                                        )}
-                                      </div>
+                                          <p className="whitespace-pre-line">{turn.message}</p>
+                                        </div>
+                                      ))}
                                     </div>
                                   )}
-
+                                  {comm.fullEmailText && (
+                                    <div className="p-2.5 bg-slate-900 text-slate-100 rounded-lg font-mono text-[11px] whitespace-pre-wrap">
+                                      {comm.fullEmailText}
+                                    </div>
+                                  )}
                                 </div>
-
-                              </div>
-                            );
-                          })}
-
-                        </div>
-                      </div>
-
-                      {/* Card Footer */}
-                      <div className="px-5 py-2.5 bg-slate-100/80 border-t border-slate-200 flex items-center justify-between text-xs">
-                        <span className="font-mono text-slate-500">
-                          Thread Key: <strong>{group.threadId}</strong> · {group.messages.length} recorded messages
-                        </span>
-
-                        <button
-                          onClick={() => setActiveThreadModalId(group.threadId)}
-                          className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
-                        >
-                          <span>View Full Thread Modal</span>
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </>
+                              </details>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
 
                 </div>

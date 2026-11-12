@@ -80,124 +80,66 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
   });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       
-      {/* Top Header Card & Banner */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-2xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center font-bold shadow-2xs shrink-0">
-              <Building2 className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-bold text-slate-900">Vendors & Suppliers</h2>
-                <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                  Section A
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                Evaluated fabricators, component vendors, and technical service partners
-              </p>
-            </div>
+      {/* Unified Compact Header & Filter Bar */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-3.5 sm:p-4 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="h-9 w-9 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+            <Building2 className="h-4 w-4" />
           </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <button
-              onClick={() => onOpenManufacturerModal()}
-              disabled={!hasPermission('canCreateManufacturer')}
-              title={!hasPermission('canCreateManufacturer') ? 'Requires Manager or Admin' : 'Add new supplier'}
-              className="w-full sm:w-auto justify-center inline-flex items-center gap-1.5 px-3.5 py-2.5 sm:py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 active:bg-indigo-800 transition-colors shadow-xs disabled:opacity-40 cursor-pointer"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Add Supplier</span>
-            </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm sm:text-base font-bold text-slate-900">Vendors & Suppliers</h2>
+              <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                {filteredManufacturers.length} / {manufacturers.length}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Click any row to inspect supplier communication history
+            </p>
           </div>
         </div>
 
-        {/* Key KPI Metric Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-          <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-xl flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-              <Building2 className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Vendors</div>
-              <div className="text-sm font-bold text-slate-900">{manufacturers.length}</div>
-            </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search vendors, products..."
+              className="w-full pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder:text-slate-400"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
 
-          <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-xl flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Active Suppliers</div>
-              <div className="text-sm font-bold text-slate-900">
-                {manufacturers.filter(m => m.status === 'Active').length}
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-xl flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-              <MessageSquare className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Comms</div>
-              <div className="text-sm font-bold text-slate-900">{communications.length}</div>
-            </div>
-          </div>
-
-          <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-xl flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-              <Clock className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Open Actions</div>
-              <div className="text-sm font-bold text-slate-900">
-                {communications.filter(c => c.status !== 'Completed').length}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Search & Filter Controls */}
-      <div className="bg-white rounded-xl border border-slate-200 p-3 sm:p-4 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search vendors, products, portal..."
-            className="w-full pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-hidden focus:ring-2 focus:ring-indigo-500 text-slate-900 placeholder:text-slate-400"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <span className="text-xs font-semibold text-slate-500 flex items-center gap-1">
-            <Filter className="h-3.5 w-3.5" />
-            <span>Status:</span>
-          </span>
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as any)}
-            className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+            className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-indigo-500 cursor-pointer"
           >
-            <option value="ALL">All Statuses ({manufacturers.length})</option>
-            <option value="Active">Active Only ({manufacturers.filter(m => m.status === 'Active').length})</option>
-            <option value="Removed">Removed / Deactivated ({manufacturers.filter(m => m.status === 'Removed').length})</option>
+            <option value="ALL">All ({manufacturers.length})</option>
+            <option value="Active">Active ({manufacturers.filter(m => m.status === 'Active').length})</option>
+            <option value="Removed">Removed ({manufacturers.filter(m => m.status === 'Removed').length})</option>
           </select>
+
+          <button
+            onClick={() => onOpenManufacturerModal()}
+            disabled={!hasPermission('canCreateManufacturer')}
+            title={!hasPermission('canCreateManufacturer') ? 'Requires Manager or Admin' : 'Add new supplier'}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors shadow-xs disabled:opacity-40 cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Add Supplier</span>
+          </button>
         </div>
       </div>
 

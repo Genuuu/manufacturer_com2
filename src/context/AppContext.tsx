@@ -68,11 +68,14 @@ interface AppContextType {
   firebaseConnected: boolean;
   firebaseProjectId: string;
   isAuthenticated: boolean;
+  theme: 'light' | 'dark';
   
   setActiveTab: (tab: NavTab) => void;
   setSelectedManufacturerId: (id: string) => void;
   setSelectedThreadId: (id: string | null) => void;
   setSearchQuery: (query: string) => void;
+  setTheme: (theme: 'light' | 'dark') => void;
+  toggleTheme: () => void;
   switchUser: (userId: string) => void;
   
   loginWithUser: (user: AppUser) => void;
@@ -127,6 +130,7 @@ const STORAGE_KEYS = {
   AUDIT: 'fabricateops_audit_logs_v1',
   IS_AUTH: 'fabricateops_is_auth_v1',
   SHEET_BACKUP: 'fabricateops_sheet_backup_v1',
+  THEME: 'fabricateops_theme_v1',
 };
 
 const HARDCODED_USER_IDS = new Set(['usr-admin', 'usr-admin-gk', 'usr-1', 'usr-2', 'usr-3', 'usr-4']);
@@ -322,6 +326,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [selectedManufacturerId, setSelectedManufacturerId] = useState<string>('');
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [theme, setThemeState] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.THEME);
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch {
+      // ignore
+    }
+    return 'light';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.THEME, theme);
+    } catch {
+      // ignore
+    }
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('dark', theme === 'dark');
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.style.colorScheme = theme;
+    }
+  }, [theme]);
+
+  const setTheme = (nextTheme: 'light' | 'dark') => {
+    setThemeState(nextTheme);
+  };
+
+  const toggleTheme = () => {
+    setThemeState(prev => (prev === 'dark' ? 'light' : 'dark'));
+  };
   
   // Firebase state
   const [firebaseConnected, setFirebaseConnected] = useState<boolean>(true);
@@ -1592,10 +1626,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         firebaseConnected,
         firebaseProjectId,
         isAuthenticated,
+        theme,
         setActiveTab,
         setSelectedManufacturerId,
         setSelectedThreadId,
         setSearchQuery,
+        setTheme,
+        toggleTheme,
         switchUser,
         loginWithUser,
         loginWithGoogle,
