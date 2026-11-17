@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { OverviewView } from './components/OverviewView';
 import { CommunicationView } from './components/CommunicationView';
 import { ManufacturerView } from './components/ManufacturerView';
+import { CertificationsView } from './components/CertificationsView';
 import { EmailTemplatesView } from './components/EmailTemplatesView';
 import { SpreadsheetView } from './components/SpreadsheetView';
 import { AccessView } from './components/AccessView';
@@ -111,6 +112,8 @@ const MainLayout: React.FC = () => {
             onPreviewDoc={handlePreviewDoc}
           />
         )}
+
+        {activeTab === 'certifications' && <CertificationsView />}
 
         {activeTab === 'templates' && canViewTemplates && <EmailTemplatesView />}
 

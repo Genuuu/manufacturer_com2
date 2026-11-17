@@ -32,6 +32,7 @@ const PORT = Number(process.env.PORT) || 3000;
 let latestDbState: {
   manufacturers: any[];
   communications: any[];
+  componentDocuments?: any[];
   users?: any[];
   rolePermissions?: any;
   auditLogs?: any[];
@@ -39,6 +40,7 @@ let latestDbState: {
 } = {
   manufacturers: INITIAL_MANUFACTURERS,
   communications: INITIAL_COMMUNICATIONS,
+  componentDocuments: [],
   updatedAt: new Date().toISOString(),
 };
 

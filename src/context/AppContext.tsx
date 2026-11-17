@@ -16,6 +16,7 @@ import {
   UserRoleType,
   AuditLogItem,
   ManufacturerStatus,
+  ComponentDocument,
 } from '../types';
 import {
   INITIAL_MANUFACTURERS,
@@ -51,6 +52,7 @@ export type NavTab =
   | 'overview'
   | 'communications'
   | 'manufacturers'
+  | 'certifications'
   | 'templates'
   | 'spreadsheet'
   | 'permissions';
@@ -58,6 +60,7 @@ export type NavTab =
 interface AppContextType {
   manufacturers: Manufacturer[];
   communications: CommunicationEntry[];
+  componentDocuments: ComponentDocument[];
   users: AppUser[];
   currentUser: AppUser;
   rolePermissions: Record<UserRoleType, RolePermissions>;
@@ -97,6 +100,16 @@ interface AppContextType {
   deleteCommunication: (id: string) => { success: boolean; message: string };
   getNextThreadId: (mId?: string) => string;
   getThreadsForManufacturer: (mId: string) => string[];
+
+  // Component Certifications & Design Docs (Manual Drive Links)
+  addComponentDoc: (
+    data: Omit<ComponentDocument, 'id' | 'createdAt' | 'updatedAt' | 'addedBy'>
+  ) => { success: boolean; message: string; id?: string };
+  updateComponentDoc: (
+    id: string,
+    data: Partial<ComponentDocument>
+  ) => { success: boolean; message: string };
+  deleteComponentDoc: (id: string) => { success: boolean; message: string };
   
   // Permissions & Users
   updateRolePermissions: (role: UserRoleType, permissions: RolePermissions) => { success: boolean; message: string };
@@ -132,6 +145,7 @@ const STORAGE_KEYS = {
   IS_AUTH: 'fabricateops_is_auth_v1',
   SHEET_BACKUP: 'fabricateops_sheet_backup_v1',
   THEME: 'fabricateops_theme_v1',
+  COMPONENT_DOCS: 'fabricateops_component_docs_v1',
 };
 
 const HARDCODED_USER_IDS = new Set(['usr-admin', 'usr-admin-gk', 'usr-1', 'usr-2', 'usr-3', 'usr-4']);
@@ -282,9 +296,33 @@ const FALLBACK_SESSION_USER: AppUser = {
   lastLogin: '',
 };
 
+function sanitizeComponentDocForFirestore(docItem: ComponentDocument): ComponentDocument {
+  const clean: ComponentDocument = {
+    id: String(docItem.id).slice(0, 128),
+    componentName: String(docItem.componentName || '').trim().slice(0, 300),
+    category: docItem.category,
+    driveUrl: String(docItem.driveUrl || '').trim().slice(0, 2000),
+    status: docItem.status,
+    createdAt: String(docItem.createdAt || new Date().toISOString()).slice(0, 64),
+    updatedAt: String(docItem.updatedAt || new Date().toISOString()).slice(0, 64),
+  };
+  if (docItem.title?.trim()) clean.title = docItem.title.trim().slice(0, 300);
+  if (docItem.partNumber?.trim()) clean.partNumber = docItem.partNumber.trim().slice(0, 150);
+  if (docItem.manufacturerId?.trim()) clean.manufacturerId = docItem.manufacturerId.trim().slice(0, 128);
+  if (docItem.manufacturerName?.trim()) clean.manufacturerName = docItem.manufacturerName.trim().slice(0, 500);
+  if (docItem.standardOrRef?.trim()) clean.standardOrRef = docItem.standardOrRef.trim().slice(0, 300);
+  if (docItem.driveResourceType) clean.driveResourceType = docItem.driveResourceType;
+  if (docItem.driveFileId?.trim()) clean.driveFileId = docItem.driveFileId.trim().slice(0, 256);
+  if (docItem.expiryDate?.trim()) clean.expiryDate = docItem.expiryDate.trim().slice(0, 64);
+  if (docItem.notes?.trim()) clean.notes = docItem.notes.trim().slice(0, 5000);
+  if (docItem.addedBy?.trim()) clean.addedBy = docItem.addedBy.trim().slice(0, 200);
+  return clean;
+}
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const deletedManufacturerIdsRef = useRef<Set<string>>(new Set());
   const deletedCommIdsRef = useRef<Set<string>>(new Set());
+  const deletedComponentDocIdsRef = useRef<Set<string>>(new Set());
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
@@ -305,6 +343,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return [...parsed].sort(compareCommByEntryOrder);
     } catch {
       return INITIAL_COMMUNICATIONS;
+    }
+  });
+
+  const [componentDocuments, setComponentDocuments] = useState<ComponentDocument[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.COMPONENT_DOCS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+      return [];
+    } catch {
+      return [];
     }
   });
 
@@ -727,6 +778,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }, err => console.warn('Firestore sheetBackup sync notice:', err.message));
 
+    const unsubComponentDocs = onSnapshot(collection(db, 'componentDocuments'), snapshot => {
+      const remoteMap = new Map<string, ComponentDocument>();
+      snapshot.forEach(docSnap => {
+        if (!deletedComponentDocIdsRef.current.has(docSnap.id)) {
+          remoteMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as ComponentDocument);
+        }
+      });
+
+      setComponentDocuments(prev => {
+        const merged = new Map<string, ComponentDocument>(remoteMap);
+        prev.forEach(localItem => {
+          if (
+            localItem &&
+            localItem.id &&
+            !deletedComponentDocIdsRef.current.has(localItem.id) &&
+            !merged.has(localItem.id)
+          ) {
+            merged.set(localItem.id, localItem);
+            setDoc(
+              doc(db, 'componentDocuments', localItem.id),
+              sanitizeComponentDocForFirestore(localItem)
+            ).catch(err =>
+              handleFirestoreError(err, OperationType.WRITE, `componentDocuments/${localItem.id}`)
+            );
+          }
+        });
+        return Array.from(merged.values()).sort((a, b) =>
+          (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || '')
+        );
+      });
+    }, err => handleFirestoreError(err, OperationType.LIST, 'componentDocuments'));
+
     return () => {
       unsubManufacturers();
       unsubCommunications();
@@ -734,6 +817,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       unsubAudit();
       unsubPermissions();
       unsubSheetBackup();
+      unsubComponentDocs();
     };
   }, [isAuthenticated]);
 
@@ -764,7 +848,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       .then(res => res.json())
       .then(result => {
         if (result && result.success && result.data) {
-          const { manufacturers: mData, communications: cData, users: uData, rolePermissions: pData, auditLogs: aData } = result.data;
+          const {
+            manufacturers: mData,
+            communications: cData,
+            componentDocuments: dData,
+            users: uData,
+            rolePermissions: pData,
+            auditLogs: aData,
+          } = result.data;
           if (mData && Array.isArray(mData) && mData.length > 0) {
             setManufacturers(prev => {
               const map = new Map(prev.map(item => [item.id, item]));
@@ -787,6 +878,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 }
               });
               return Array.from(map.values()).sort(compareCommByEntryOrder);
+            });
+          }
+          if (dData && Array.isArray(dData) && dData.length > 0) {
+            setComponentDocuments(prev => {
+              const map = new Map(prev.map(item => [item.id, item]));
+              dData.forEach((item: ComponentDocument) => {
+                if (item && item.id && !map.has(item.id) && !deletedComponentDocIdsRef.current.has(item.id)) {
+                  map.set(item.id, item);
+                  setDoc(
+                    doc(db, 'componentDocuments', item.id),
+                    sanitizeComponentDocForFirestore(item)
+                  ).catch(() => {});
+                }
+              });
+              return Array.from(map.values()).sort((a, b) =>
+                (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || '')
+              );
             });
           }
           if (uData && Array.isArray(uData)) {
@@ -835,6 +943,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       localStorage.setItem(STORAGE_KEYS.MANUFACTURERS, JSON.stringify(manufacturers));
       localStorage.setItem(STORAGE_KEYS.COMMUNICATIONS, JSON.stringify(communications));
+      localStorage.setItem(STORAGE_KEYS.COMPONENT_DOCS, JSON.stringify(componentDocuments));
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
       localStorage.setItem(STORAGE_KEYS.PERMISSIONS, JSON.stringify(rolePermissions));
@@ -847,6 +956,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           body: JSON.stringify({
             manufacturers,
             communications,
+            componentDocuments,
             users,
             rolePermissions,
             auditLogs,
@@ -856,7 +966,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch (e) {
       console.warn('Persistence error', e);
     }
-  }, [manufacturers, communications, users, currentUser, rolePermissions, auditLogs, isDbLoaded]);
+  }, [manufacturers, communications, componentDocuments, users, currentUser, rolePermissions, auditLogs, isDbLoaded]);
 
   // Log an audit trail entry
   const addAuditLog = (
@@ -1441,10 +1551,109 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         console.warn('Firestore delete auditLog error:', err)
       );
     });
+    componentDocuments.forEach(d => {
+      deletedComponentDocIdsRef.current.add(d.id);
+      deleteDoc(doc(db, 'componentDocuments', d.id)).catch(err =>
+        console.warn('Firestore delete componentDocument error:', err)
+      );
+    });
     setManufacturers([]);
     setCommunications([]);
+    setComponentDocuments([]);
     setAuditLogs([]);
-    addAuditLog('CLEAR_DATABASE', 'DATA', 'Cleared all manufacturers and communications records from database');
+    addAuditLog('CLEAR_DATABASE', 'DATA', 'Cleared all manufacturers, communications, and component document records from database');
+  };
+
+  // Component Documents / Certifications CRUD (Manual Google Drive links)
+  const addComponentDoc = (
+    data: Omit<ComponentDocument, 'id' | 'createdAt' | 'updatedAt' | 'addedBy'>
+  ) => {
+    if (
+      currentUser.role === 'viewer' &&
+      !hasPermission('canLogCommunication') &&
+      !hasPermission('canCreateManufacturer')
+    ) {
+      return { success: false, message: 'Permission Denied: Viewers have read-only access.' };
+    }
+    const now = new Date().toISOString();
+    const id = `cdoc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newDoc = sanitizeComponentDocForFirestore({
+      ...data,
+      id,
+      addedBy: currentUser.name,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    deletedComponentDocIdsRef.current.delete(id);
+    setComponentDocuments(prev => [newDoc, ...prev]);
+    setDoc(doc(db, 'componentDocuments', id), newDoc).catch(err => {
+      handleFirestoreError(err, OperationType.WRITE, `componentDocuments/${id}`);
+    });
+    addAuditLog(
+      'ADD_COMPONENT_DOC',
+      'DATA',
+      `Linked ${newDoc.category} for component ${newDoc.componentName}`,
+      id
+    );
+    return { success: true, message: `Linked ${newDoc.category} to ${newDoc.componentName}`, id };
+  };
+
+  const updateComponentDoc = (id: string, data: Partial<ComponentDocument>) => {
+    if (
+      currentUser.role === 'viewer' &&
+      !hasPermission('canEditCommunication') &&
+      !hasPermission('canEditManufacturer')
+    ) {
+      return { success: false, message: 'Permission Denied: Viewers have read-only access.' };
+    }
+    let updatedLabel = '';
+    setComponentDocuments(prev =>
+      prev.map(item => {
+        if (item.id !== id) return item;
+        const merged = sanitizeComponentDocForFirestore({
+          ...item,
+          ...data,
+          id: item.id,
+          createdAt: item.createdAt,
+          updatedAt: new Date().toISOString(),
+        });
+        updatedLabel = `${merged.category} (${merged.componentName})`;
+        setDoc(doc(db, 'componentDocuments', id), merged).catch(err => {
+          handleFirestoreError(err, OperationType.UPDATE, `componentDocuments/${id}`);
+        });
+        return merged;
+      })
+    );
+    addAuditLog(
+      'UPDATE_COMPONENT_DOC',
+      'DATA',
+      `Updated component document ${updatedLabel || id}`,
+      id
+    );
+    return { success: true, message: 'Component document updated' };
+  };
+
+  const deleteComponentDoc = (id: string) => {
+    if (
+      currentUser.role === 'viewer' &&
+      !hasPermission('canDeleteCommunication')
+    ) {
+      return { success: false, message: 'Permission Denied: Only Admin or Moderator can remove linked documents.' };
+    }
+    const target = componentDocuments.find(d => d.id === id);
+    deletedComponentDocIdsRef.current.add(id);
+    setComponentDocuments(prev => prev.filter(d => d.id !== id));
+    deleteDoc(doc(db, 'componentDocuments', id)).catch(err => {
+      handleFirestoreError(err, OperationType.DELETE, `componentDocuments/${id}`);
+    });
+    addAuditLog(
+      'DELETE_COMPONENT_DOC',
+      'DATA',
+      `Removed linked ${target?.category || 'document'} for ${target?.componentName || 'component'}`,
+      id
+    );
+    return { success: true, message: 'Component document removed' };
   };
 
   // CSV Export & Import matching spreadsheet structure in strict entry order
@@ -1653,6 +1862,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       value={{
         manufacturers,
         communications,
+        componentDocuments,
         users,
         currentUser,
         rolePermissions,
@@ -1685,6 +1895,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteCommunication,
         getNextThreadId,
         getThreadsForManufacturer,
+        addComponentDoc,
+        updateComponentDoc,
+        deleteComponentDoc,
         updateRolePermissions,
         createUser,
         updateUser,

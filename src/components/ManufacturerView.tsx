@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Manufacturer, ManufacturerStatus } from '../types';
-import { compareCommByEntryOrder } from '../utils/spreadsheetSync';
+import { compareCommLatestFirst } from '../utils/spreadsheetSync';
 import {
   Plus,
   ExternalLink,
@@ -45,7 +45,7 @@ export const ManufacturerView: React.FC<ManufacturerViewProps> = ({
   const inspectedComms = inspectedM
     ? communications
         .filter(c => c.manufacturerId === inspectedM.id)
-        .sort(compareCommByEntryOrder)
+        .sort(compareCommLatestFirst)
     : [];
 
   const handleStatusToggle = (m: Manufacturer) => {

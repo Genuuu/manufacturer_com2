@@ -108,3 +108,41 @@ export interface AuditLogItem {
   details: string;
   targetId?: string;
 }
+
+export type ComponentDocCategory =
+  | 'Certification'
+  | 'Design Datasheet'
+  | 'Test Report'
+  | 'Compliance / CoC'
+  | 'CAD / Gerber'
+  | 'Other';
+
+export type ComponentDocStatus =
+  | 'Verified'
+  | 'Active'
+  | 'Pending'
+  | 'Needs Renewal'
+  | 'Expired';
+
+export type DriveResourceType = 'file' | 'folder' | 'doc' | 'sheet' | 'slides' | 'link';
+
+export interface ComponentDocument {
+  id: string;
+  componentName: string;
+  partNumber?: string;
+  manufacturerId?: string;
+  manufacturerName?: string;
+  category: ComponentDocCategory;
+  title?: string;
+  standardOrRef?: string;
+  driveUrl: string;
+  driveResourceType?: DriveResourceType;
+  driveFileId?: string;
+  status: ComponentDocStatus;
+  expiryDate?: string;
+  notes?: string;
+  addedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

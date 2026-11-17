@@ -221,6 +221,7 @@ service cloud.firestore {
           'subject',
           'body',
           'description',
+          'customVariables',
           'updatedAt'
         ])
         && isValidId(data.id)
@@ -229,7 +230,63 @@ service cloud.firestore {
         && isValidString(data.subject, 1000)
         && isValidString(data.body, 50000)
         && isOptionalString(data, 'description', 1000)
+        && isOptionalList(data, 'customVariables', 50)
         && isOptionalString(data, 'updatedAt', 64);
+    }
+
+    function isValidComponentDocument(data) {
+      return data.keys().hasAll([
+          'id',
+          'componentName',
+          'category',
+          'driveUrl',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'componentName',
+          'partNumber',
+          'manufacturerId',
+          'manufacturerName',
+          'category',
+          'title',
+          'standardOrRef',
+          'driveUrl',
+          'driveResourceType',
+          'driveFileId',
+          'status',
+          'expiryDate',
+          'notes',
+          'addedBy',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.componentName, 300) && data.componentName.size() >= 1
+        && isOptionalString(data, 'partNumber', 150)
+        && isOptionalString(data, 'manufacturerId', 128)
+        && isOptionalString(data, 'manufacturerName', 500)
+        && data.category in [
+          'Certification',
+          'Design Datasheet',
+          'Test Report',
+          'Compliance / CoC',
+          'CAD / Gerber',
+          'Other'
+        ]
+        && isOptionalString(data, 'title', 300)
+        && isOptionalString(data, 'standardOrRef', 300)
+        && isValidString(data.driveUrl, 2000) && data.driveUrl.size() >= 8 && data.driveUrl.matches('^https?://.*')
+        && (!('driveResourceType' in data) || data.driveResourceType == null || data.driveResourceType in ['file', 'folder', 'doc', 'sheet', 'slides', 'link'])
+        && isOptionalString(data, 'driveFileId', 256)
+        && data.status in ['Verified', 'Active', 'Pending', 'Needs Renewal', 'Expired']
+        && isOptionalString(data, 'expiryDate', 64)
+        && isOptionalString(data, 'notes', 5000)
+        && isOptionalString(data, 'addedBy', 200)
+        && isValidString(data.createdAt, 64)
+        && isValidString(data.updatedAt, 64);
     }
 
     // =========================================================================
@@ -292,15 +349,41 @@ service cloud.firestore {
       allow create, update: if (
         isBootstrappedAdmin() || (
           isAuthorizedUser()
-          && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.role == 'admin'
+          && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.role in ['admin', 'manager']
         )
       ) && isValidId(templateId) && isValidEmailTemplate(incoming());
       allow delete: if (
         isBootstrappedAdmin() || (
           isAuthorizedUser()
-          && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.role == 'admin'
+          && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.role in ['admin', 'manager']
         )
       ) && isValidId(templateId);
+    }
+
+    match /componentDocuments/{docId} {
+      allow get: if isAuthorizedUser() && isValidId(docId);
+      allow list: if isSignedIn();
+      allow create: if (
+        isBootstrappedAdmin() || (
+          isAuthorizedUser()
+          && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.role in ['admin', 'moderator', 'manager', 'engineer']
+        )
+      ) && isValidId(docId) && isValidComponentDocument(incoming());
+      allow update: if (
+        isBootstrappedAdmin() || (
+          isAuthorizedUser()
+          && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.role in ['admin', 'moderator', 'manager', 'engineer']
+        )
+      ) && isValidId(docId)
+        && isValidComponentDocument(incoming())
+        && incoming().id == resource.data.id
+        && incoming().createdAt == resource.data.createdAt;
+      allow delete: if (
+        isBootstrappedAdmin() || (
+          isAuthorizedUser()
+          && get(/databases/$(database)/documents/authorizedEmails/$(request.auth.token.email.lower())).data.role in ['admin', 'moderator', 'manager', 'engineer']
+        )
+      ) && isValidId(docId);
     }
 
     // Default-deny catch-all

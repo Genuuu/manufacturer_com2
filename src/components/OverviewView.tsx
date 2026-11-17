@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { CommunicationEntry } from '../types';
-import { compareCommByEntryOrder } from '../utils/spreadsheetSync';
+import { compareCommByEntryOrder, compareCommLatestFirst } from '../utils/spreadsheetSync';
 import {
   Clock,
   Building2,
@@ -61,7 +61,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     return Array.from(threadStatusMap.entries()).filter(([_, isOpen]) => isOpen).map(([tid]) => tid);
   }, [communications]);
 
-  const awaitingReply = communications.filter(c => c.status === 'Awaiting Reply').sort(compareCommByEntryOrder);
+  const awaitingReply = communications.filter(c => c.status === 'Awaiting Reply').sort(compareCommLatestFirst);
   const actionRequired = communications
     .filter(
       c =>
@@ -71,7 +71,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           c.status !== 'Completed' &&
           c.status !== 'Reply Received')
     )
-    .sort(compareCommByEntryOrder);
+    .sort(compareCommLatestFirst);
   const activeManufacturers = manufacturers.filter(m => m.status === 'Active');
 
   // Filter suppliers by global searchQuery
@@ -124,18 +124,18 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     return Array.from(threadMap.entries())
       .filter(([_, msgs]) => msgs.some(m => m.status !== 'Completed' && m.status !== 'Reply Received'))
       .map(([tid, msgs]) => {
-        const sorted = [...msgs].sort(compareCommByEntryOrder);
-        const latest = sorted[sorted.length - 1];
+        const sorted = [...msgs].sort(compareCommLatestFirst);
+        const latest = sorted[0];
         return {
           threadId: tid,
           messages: sorted,
           latestMsg: latest,
-          firstMsg: sorted[0],
+          firstMsg: sorted[sorted.length - 1],
           manufacturerId: latest.manufacturerId,
           manufacturerName: latest.manufacturerName,
         };
       })
-      .sort((a, b) => b.latestMsg.date.localeCompare(a.latestMsg.date));
+      .sort((a, b) => compareCommLatestFirst(a.latestMsg, b.latestMsg));
   }, [manufacturerComms]);
 
   const handleSaveQuickActionText = (commId: string) => {
@@ -164,14 +164,14 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   });
 
   const threads = Array.from(threadMap.entries()).map(([tid, msgs]) => {
-    const sorted = [...msgs].sort(compareCommByEntryOrder);
+    const sorted = [...msgs].sort(compareCommLatestFirst);
     return {
       threadId: tid,
       messages: sorted,
-      latestMsg: sorted[sorted.length - 1],
-      firstMsg: sorted[0],
+      latestMsg: sorted[0],
+      firstMsg: sorted[sorted.length - 1],
     };
-  });
+  }).sort((a, b) => compareCommLatestFirst(a.latestMsg, b.latestMsg));
 
   return (
     <div className="space-y-4">

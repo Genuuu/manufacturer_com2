@@ -17,6 +17,7 @@ import {
   Mail,
   Search,
   X,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -36,6 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     hasPermission,
     manufacturers,
     communications,
+    componentDocuments,
     logout,
     searchQuery,
     setSearchQuery,
@@ -101,7 +103,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             {/* Zone 2: Clean Desktop Navigation Links + Global Search */}
-            <div className="hidden md:flex items-center gap-3 flex-1 justify-center max-w-3xl">
+            <div className="hidden md:flex items-center gap-2.5 flex-1 justify-center max-w-4xl">
               <nav className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/70 shrink-0">
                 <button
                   onClick={() => setActiveTab('overview')}
@@ -139,6 +141,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>Vendors</span>
                   <span className="text-[10px] font-mono tabular-nums text-slate-400">
                     {manufacturers.length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('certifications')}
+                  className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1 ${
+                    activeTab === 'certifications'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>Certs &amp; Docs</span>
+                  <span className="text-[10px] font-mono tabular-nums text-slate-400">
+                    {componentDocuments.length}
                   </span>
                 </button>
 
@@ -181,7 +197,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </nav>
 
               {/* Global Search Input */}
-              <div className="relative w-44 lg:w-56">
+              <div className="relative w-36 lg:w-48 xl:w-52">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                 <input
                   type="text"
@@ -303,7 +319,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Mobile Fixed Bottom Navigation Bar (< 768px) */}
       <nav
         className={`md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-1 py-1 grid ${
-          canViewTemplates ? 'grid-cols-6' : 'grid-cols-5'
+          canViewTemplates ? 'grid-cols-7' : 'grid-cols-6'
         } items-center h-14`}
       >
         <button
@@ -334,6 +350,16 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <Building2 className="h-4 w-4" />
           <span>Vendors</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('certifications')}
+          className={`flex flex-col items-center justify-center gap-0.5 h-11 rounded-lg text-[10px] font-semibold ${
+            activeTab === 'certifications' ? 'text-indigo-600 font-bold' : 'text-slate-500'
+          }`}
+        >
+          <ShieldCheck className="h-4 w-4" />
+          <span>Certs</span>
         </button>
 
         {canViewTemplates && (

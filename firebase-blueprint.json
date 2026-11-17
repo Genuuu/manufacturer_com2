@@ -118,7 +118,7 @@
     },
     "EmailTemplate": {
       "title": "EmailTemplate",
-      "description": "Reusable procurement and supplier communication email template",
+      "description": "Reusable procurement and supplier communication email template with custom variables",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
@@ -127,9 +127,51 @@
         "subject": { "type": "string", "maxLength": 1000 },
         "body": { "type": "string", "maxLength": 50000 },
         "description": { "type": "string", "maxLength": 1000 },
+        "customVariables": { "type": "array" },
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "title", "category", "subject", "body"]
+    },
+    "ComponentDocument": {
+      "title": "ComponentDocument",
+      "description": "Manually linked Google Drive certification, design datasheet, or compliance document for an ordered component",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "componentName": { "type": "string", "maxLength": 300 },
+        "partNumber": { "type": "string", "maxLength": 150 },
+        "manufacturerId": { "type": "string", "maxLength": 128 },
+        "manufacturerName": { "type": "string", "maxLength": 500 },
+        "category": {
+          "type": "string",
+          "enum": [
+            "Certification",
+            "Design Datasheet",
+            "Test Report",
+            "Compliance / CoC",
+            "CAD / Gerber",
+            "Other"
+          ]
+        },
+        "title": { "type": "string", "maxLength": 300 },
+        "standardOrRef": { "type": "string", "maxLength": 300 },
+        "driveUrl": { "type": "string", "maxLength": 2000 },
+        "driveResourceType": {
+          "type": "string",
+          "enum": ["file", "folder", "doc", "sheet", "slides", "link"]
+        },
+        "driveFileId": { "type": "string", "maxLength": 256 },
+        "status": {
+          "type": "string",
+          "enum": ["Verified", "Active", "Pending", "Needs Renewal", "Expired"]
+        },
+        "expiryDate": { "type": "string", "maxLength": 64 },
+        "notes": { "type": "string", "maxLength": 5000 },
+        "addedBy": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "componentName", "category", "driveUrl", "status", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -160,6 +202,10 @@
     "/emailTemplates/{templateId}": {
       "schema": { "$ref": "#/entities/EmailTemplate" },
       "description": "Collection of reusable procurement email templates"
+    },
+    "/componentDocuments/{docId}": {
+      "schema": { "$ref": "#/entities/ComponentDocument" },
+      "description": "Collection of manually linked component certifications, design datasheets, and Google Drive document links"
     }
   }
 }

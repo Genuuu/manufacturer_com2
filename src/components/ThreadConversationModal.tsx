@@ -1,7 +1,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { CommunicationEntry } from '../types';
-import { compareCommByEntryOrder } from '../utils/spreadsheetSync';
+import { compareCommLatestFirst } from '../utils/spreadsheetSync';
 import {
   X,
   MessageSquare,
@@ -44,14 +44,16 @@ export const ThreadConversationModal: React.FC<ThreadConversationModalProps> = (
 
   if (!isOpen || !threadId) return null;
 
-  // Find all messages in this thread sorted strictly by the order in which data was entered
+  // Find all messages in this thread sorted with the latest entry at the top
   const threadComms = communications
     .filter(c => c.threadId === threadId)
-    .sort(compareCommByEntryOrder);
+    .sort(compareCommLatestFirst);
 
-  const firstMsg = threadComms[0];
-  const latestMsg = threadComms[threadComms.length - 1];
-  const manufacturer = firstMsg
+  const latestMsg = threadComms[0];
+  const firstMsg = threadComms[threadComms.length - 1];
+  const manufacturer = latestMsg
+    ? manufacturers.find(m => m.id === latestMsg.manufacturerId)
+    : firstMsg
     ? manufacturers.find(m => m.id === firstMsg.manufacturerId)
     : null;
 

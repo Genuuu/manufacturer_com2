@@ -69,6 +69,14 @@ export function compareCommByEntryOrder(a: CommunicationEntry, b: CommunicationE
 }
 
 /**
+ * Sorts communication entries with the latest (newest) at the top.
+ */
+export function compareCommLatestFirst(a: CommunicationEntry, b: CommunicationEntry): number {
+  // Invert compareCommByEntryOrder so the latest comes first
+  return compareCommByEntryOrder(b, a);
+}
+
+/**
  * Sorts manufacturers by ID (M001, M002, M003...)
  */
 export function compareManufacturerById(a: Manufacturer, b: Manufacturer): number {

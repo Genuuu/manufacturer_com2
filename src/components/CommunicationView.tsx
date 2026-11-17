@@ -19,7 +19,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { ThreadConversationModal } from './ThreadConversationModal';
-import { compareCommByEntryOrder } from '../utils/spreadsheetSync';
+import { compareCommByEntryOrder, compareCommLatestFirst } from '../utils/spreadsheetSync';
 
 interface CommunicationViewProps {
   onOpenCommModal: (entry?: CommunicationEntry) => void;
@@ -126,13 +126,13 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
 
         return true;
       })
-      .sort(compareCommByEntryOrder);
+      .sort(compareCommLatestFirst);
   }, [communications, selectedManufacturer, selectedCommType, selectedStatus, searchQuery]);
 
   // Group filtered messages into Thread Groups
   const threadGroups = useMemo(() => {
     const groupsMap = new Map<string, CommunicationEntry[]>();
-    const sorted = [...filteredComms].sort(compareCommByEntryOrder);
+    const sorted = [...filteredComms].sort(compareCommLatestFirst);
 
     sorted.forEach(c => {
       const tid = c.threadId || 'T001';
@@ -144,22 +144,23 @@ export const CommunicationView: React.FC<CommunicationViewProps> = ({
 
     return Array.from(groupsMap.entries())
       .map(([threadId, msgs]) => {
-        const orderedMsgs = [...msgs].sort(compareCommByEntryOrder);
-        const firstMsg = orderedMsgs[0];
-        const latestMsg = orderedMsgs[orderedMsgs.length - 1];
+        // Sort individual messages in each thread with latest at the top
+        const orderedMsgs = [...msgs].sort(compareCommLatestFirst);
+        const latestMsg = orderedMsgs[0];
+        const firstMsg = orderedMsgs[orderedMsgs.length - 1];
         return {
           threadId,
           messages: orderedMsgs,
           firstMsg,
           latestMsg,
-          manufacturerName: firstMsg.manufacturerName,
-          manufacturerId: firstMsg.manufacturerId,
-          primarySubject: firstMsg.subject,
+          manufacturerName: latestMsg.manufacturerName || firstMsg.manufacturerName,
+          manufacturerId: latestMsg.manufacturerId || firstMsg.manufacturerId,
+          primarySubject: latestMsg.subject || firstMsg.subject,
           status: latestMsg.status,
           date: latestMsg.date,
         };
       })
-      .sort((a, b) => compareCommByEntryOrder(b.latestMsg, a.latestMsg));
+      .sort((a, b) => compareCommLatestFirst(a.latestMsg, b.latestMsg));
   }, [filteredComms]);
 
   const isFiltered =
